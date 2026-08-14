@@ -2,8 +2,8 @@ services:
   - type: web
     name: crypto-tradingview-bot
     env: python
-    buildCommand: ""
-    startCommand: python3 bot.py
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python3 bot.py"
     envVars:
       - key: TELEGRAM_BOT_TOKEN
         value: 8990938007:AAGSlVPD7CAjaVIbPH9uBB4c8h1JcCQLWYw
