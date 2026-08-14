@@ -6,9 +6,10 @@ Compatible with 24/7 Cloud Deployment (Render / Railway / Replit).
 
 Features:
 1. /btc4h, /link3d, /eth1d, /btc 4h : Generates High-Resolution Dark Theme Chart Image + Minimal Report Caption!
-2. /scan : Multi-Coin Watchlist Scanner & Ranking
-3. TradingView Webhook Listener (Port 8080)
-4. Auto Cleanup temporary PNG files after sending.
+2. Explicit Traceback Reporting to Telegram if image creation or sending fails.
+3. /scan : Multi-Coin Watchlist Scanner & Ranking
+4. TradingView Webhook Listener (Port 8080)
+5. Auto Cleanup temporary PNG files after sending.
 """
 import urllib.request
 import urllib.parse
@@ -18,6 +19,7 @@ import os
 import sys
 import threading
 import re
+import traceback
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from scanner import get_coin_report, scan_market
 from binance_api import get_klines
@@ -179,7 +181,6 @@ def parse_coin_and_tf(cmd_text):
     """
     clean = cmd_text.strip().lower()
     
-    # Pattern: /symbol + timeframe concatenated (e.g. btc4h, link3d, eth1d)
     m = re.match(r"^([a-z0-9]+?)(15m|30m|1h|2h|4h|8h|12h|1d|3d|1w)$", clean)
     if m:
         return m.group(1).upper(), m.group(2)
@@ -198,7 +199,7 @@ def parse_coin_and_tf(cmd_text):
 def handle_update(token, update, bot_username=""):
     """
     Process incoming Telegram message.
-    Supports rendering chart images for commands with timeframe!
+    Supports rendering chart images with explicit Traceback reporting to Telegram!
     """
     global default_chat_id, config
     
@@ -249,25 +250,36 @@ def handle_update(token, update, bot_username=""):
         send_message(token, chat_id, report)
         return
 
-    # Parse coin symbol and timeframe (e.g. btc4h, link3d, eth 1d, btc)
     symbol, timeframe = parse_coin_and_tf(clean_text)
     
     if symbol:
         report = get_coin_report(symbol)
         
-        # If timeframe requested (e.g. /btc4h or /link3d), render Chart PNG image!
+        # If timeframe requested (e.g. /btc4h or /link3d), render Chart PNG image with traceback catch!
         if timeframe:
-            candles = get_klines(symbol, timeframe, 150)
-            photo_path = generate_chart_image(symbol, timeframe, candles)
-            
-            if photo_path and os.path.exists(photo_path):
-                # Send photo with concise report as caption
-                send_photo(token, chat_id, photo_path, report)
-                # Cleanup temporary file right after sending
-                cleanup_chart_image(photo_path)
+            try:
+                candles = get_klines(symbol, timeframe, 150)
+                photo_path = generate_chart_image(symbol, timeframe, candles)
+                
+                if photo_path and os.path.exists(photo_path):
+                    res = send_photo(token, chat_id, photo_path, report)
+                    cleanup_chart_image(photo_path)
+                    
+                    if res and res.get("ok"):
+                        return
+                    else:
+                        err_desc = res.get("description", "Không xác định") if res else "Telegram API Response Timeout"
+                        send_message(token, chat_id, f"❌ LỖI GỬI ẢNH TELEGRAM:\n{err_desc}")
+                        return
+                else:
+                    send_message(token, chat_id, f"❌ KHÔNG TẠO ĐƯỢC ẢNH: Lỗi sinh file cho {symbol} ({timeframe})")
+                    return
+            except Exception as e:
+                error_msg = f"❌ LỖI TẠO ẢNH ({symbol} {timeframe}):\n{str(e)}\n\nChi tiết Traceback:\n`{traceback.format_exc()[:700]}`"
+                send_message(token, chat_id, error_msg)
                 return
 
-        # Fallback to text-only report if no timeframe or image rendering skipped
+        # Fallback to text-only report if no timeframe specified (e.g. /btc)
         send_message(token, chat_id, report)
 
 def run_bot():
