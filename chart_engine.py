@@ -3,6 +3,7 @@ Dual-Engine Visual Chart Renderer for Crypto Scanner Bot
 Supports:
 1. Native Matplotlib Renderer (if installed)
 2. Zero-Dependency QuickChart Financial API Fallback (100% Guaranteed Image Generation on ANY Cloud Host!)
+Failsafe fallback built-in!
 """
 import os
 import sys
@@ -21,11 +22,10 @@ def render_chart_quickchart(symbol, interval, candles):
         return None
 
     symbol_upper = symbol.upper().replace("USDT", "")
-    candles_subset = candles[-60:] # 60 candles for crisp mobile display
+    candles_subset = candles[-60:]
     
     close_prices = [c["close"] for c in candles_subset]
     
-    # Calculate EMA 20 & EMA 50
     ema20 = calculate_ema(close_prices, 20)
     ema50 = calculate_ema(close_prices, 50)
     
@@ -118,12 +118,16 @@ def render_chart_quickchart(symbol, interval, candles):
 
 def generate_chart_image(symbol, interval, candles):
     """
-    Dual-Engine Chart Renderer:
-    Engine 1: Native Matplotlib (if installed)
-    Engine 2: QuickChart API Fallback (Zero Dependency, 100% Guaranteed Image Output!)
+    Dual-Engine Chart Renderer with automatic candle failsafe fetch.
     """
     if not candles or len(candles) < 5:
-        raise ValueError(f"Dữ liệu nến quá ngắn ({len(candles) if candles else 0} nến). Cần tối thiểu 5 nến!")
+        # Failsafe fallback: Auto-fetch 1d candles if passed candle array is empty
+        print(f"⚠️ Empty candle array for {symbol} ({interval}). Triggering Failsafe 1D candle fetch...")
+        from binance_api import get_klines
+        candles = get_klines(symbol, "1d", 150)
+
+    if not candles or len(candles) < 5:
+        raise ValueError(f"Không thể lấy dữ liệu nến cho {symbol}. Vui lòng kiểm tra lại mã coin!")
 
     symbol_upper = symbol.upper().replace("USDT", "")
     output_filename = f"chart_{symbol_upper}_{interval.lower()}.png"
