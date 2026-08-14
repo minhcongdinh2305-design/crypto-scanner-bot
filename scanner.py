@@ -5,7 +5,7 @@ def check_btc_4h_signal():
     """
     Evaluates BTC/USDT 4H candles (limit=500) against Kivanc Pine Script v4 Supertrend.
     Fast ST: ATR 10, Mult 3.0
-    Slow ST: ATR 15, Mult 10.0
+    Slow ST: ATR 12, Mult 10.0 (Updated ATR 2 = 12)
     Returns (triggered, signal_type, alert_message, current_price, val_blue, val_red)
     """
     candles = get_klines("BTCUSDT", "4h", 500)
@@ -19,8 +19,8 @@ def check_btc_4h_signal():
 
     # 1. Supertrend Nhanh (Blue / Red): ATR 10, Multiplier 3.0
     low_fast, up_fast, trend_fast = calculate_supertrend(candles, period=10, multiplier=3.0, change_atr=True)
-    # 2. Supertrend Chậm (Green / Yellow): ATR 15, Multiplier 10.0
-    low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0, change_atr=True)
+    # 2. Supertrend Chậm (Green / Yellow): ATR 12, Multiplier 10.0
+    low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=12, multiplier=10.0, change_atr=True)
 
     if not low_fast or not low_slow or not up_fast or not up_slow:
         return False, None, None, current_price, 0, 0
@@ -83,7 +83,7 @@ def check_btc_4h_signal():
 def get_btc_4h_check_report():
     """
     Instant test report for /check command.
-    Prints current BTC price and the 2 Supertrend bands (Fast 10,3 & Slow 15,10) for TradingView verification.
+    Prints current BTC price and the 2 Supertrend bands (Fast 10,3 & Slow 12,10) for TradingView verification.
     """
     ticker = get_ticker_24h("BTCUSDT")
     candles = get_klines("BTCUSDT", "4h", 500)
@@ -93,7 +93,7 @@ def get_btc_4h_check_report():
 
     curr_price = ticker["lastPrice"]
     low_fast, up_fast, trend_fast = calculate_supertrend(candles, period=10, multiplier=3.0, change_atr=True)
-    low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0, change_atr=True)
+    low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=12, multiplier=10.0, change_atr=True)
 
     if not low_fast or not low_slow or not up_fast or not up_slow:
         return "❌ Không đủ dữ liệu nến BTC 4H để tính chỉ báo."
@@ -123,7 +123,7 @@ def get_btc_4h_check_report():
         "<b>📌 DẢI 1 (NHANH - 🔵 / 🔴): ATR 10, Multiplier 3.0</b>",
         f"▫️ Blue Support 🔵: <b>{format_price_level(val_blue)}</b> (cách {diff_blue:.2f}%)",
         f"▫️ Red Resistance 🔴: <b>{format_price_level(val_red)}</b> (cách -{abs(diff_red):.2f}%)\n",
-        "<b>📌 DẢI 2 (CHẬM - 🟢 / 🟡): ATR 15, Multiplier 10.0</b>",
+        "<b>📌 DẢI 2 (CHẬM - 🟢 / 🟡): ATR 12, Multiplier 10.0</b>",
         f"▫️ Green Support 🟢: <b>{format_price_level(val_green)}</b> (dưới Blue {gap_green:.2f}%)",
         f"▫️ Yellow Resistance 🟡: <b>{format_price_level(val_yellow)}</b> (trên Red {gap_yellow:.2f}%)\n",
         f"{status_note}\n",

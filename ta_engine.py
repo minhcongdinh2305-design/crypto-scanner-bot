@@ -1,9 +1,8 @@
 """
 100% Exact TradingView Pine Script v4 Supertrend Kivanc Engine
-Supports both NumPy/Pandas and Pure Python fallback for zero-crash guarantees.
-
-Pine Script v4 Logic:
-calculate_rma(series, length): alpha = 1.0 / length, rma[i] = alpha * val[i] + (1.0 - alpha) * rma[i-1]
+Fast ST: ATR 10, Multiplier 3.0
+Slow ST: ATR 12, Multiplier 10.0 (Updated from 15 to 12)
+Source: hl2, RMA Wilder's ATR Calculation
 """
 
 try:
@@ -143,8 +142,9 @@ def analyze_4_trends(candles):
     if not candles or len(candles) < 15:
         return None, None, None, None
 
+    # Fast ST (10, 3.0) & Slow ST (12, 10.0)
     up_fast, dn_fast, trend_fast = calculate_supertrend(candles, period=10, multiplier=3.0)
-    up_slow, dn_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0)
+    up_slow, dn_slow, trend_slow = calculate_supertrend(candles, period=12, multiplier=10.0)
     
     val_blue = up_fast[-1] if up_fast else 0
     val_red = dn_fast[-1] if dn_fast else 0
