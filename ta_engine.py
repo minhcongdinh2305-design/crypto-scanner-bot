@@ -1,10 +1,10 @@
 """
-Advanced Technical Analysis (TA) Engine - Strict Action-Based Signal Filter
-Only detects active, clear technical events:
-1. Supertrend: Testing Flat S/R level OR Flipped color within last 1-3 candles.
-2. EMA: Crossover (last 1-3 candles) OR Steep Expansion Force.
-3. RSI: Bullish/Bearish Divergence OR Extreme Zones (<30 / >70).
-Neutral / Floating states are strictly ignored!
+Quantitative Action-Based TA Engine
+Strict Numerical Thresholds:
+1. Supertrend: Price within 0.5% (0.005) of Supertrend line OR Flipped color within last 3 candles.
+2. EMA: Crossover in last 3 candles OR Expansion distance > 1.5% (0.015) of price with steep slope.
+3. RSI: RSI <= 30 (Oversold), RSI >= 70 (Overbought), OR confirmed Divergence.
+RSI between 31 and 69 is COMPLETELY IGNORED.
 """
 
 def calculate_ema(prices, period):
@@ -50,9 +50,9 @@ def calculate_atr(candles, period=15):
 
 def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
     """
-    Supertrend Calculation with Flip Event & Flat Level Detection.
+    Supertrend with Quantitative 0.5% Distance Check & Flip Event.
     """
-    default_res = {"trend": "NEUTRAL", "is_buy": False, "value": None, "is_flat": False, "flat_duration": 0, "just_flipped": False, "history": []}
+    default_res = {"trend": "NEUTRAL", "is_buy": False, "value": None, "is_flat": False, "is_testing_flat": False, "just_flipped": False}
     
     if not candles or len(candles) <= atr_period + 5:
         return default_res
@@ -103,20 +103,20 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
             
             supertrend.append(final_lower if curr_trend else final_upper)
 
-        # Detect Flat Level (constant for 3+ candles)
+        curr_price = aligned_candles[-1]["close"]
+        st_val = supertrend[-1]
+        
+        # QUANTITATIVE RULE 1: Price Close is within 0.5% (0.005) of Supertrend line
+        dist_pct = abs(curr_price - st_val) / (curr_price + 1e-9)
+        is_testing_flat = (dist_pct <= 0.005)
+
+        # Flat Level Check
         is_flat = False
-        flat_duration = 1
-        if len(supertrend) >= 5:
-            last_val = supertrend[-1]
-            for idx in range(2, 6):
-                if abs(supertrend[-idx] - last_val) / (last_val + 1e-9) < 0.0005:
-                    flat_duration += 1
-                else:
-                    break
-            if flat_duration >= 3:
+        if len(supertrend) >= 4:
+            if abs(supertrend[-1] - supertrend[-4]) / (st_val + 1e-9) < 0.0005:
                 is_flat = True
 
-        # Detect Flip Event in last 1-3 candles
+        # QUANTITATIVE RULE 2: Supertrend color flipped in last 1-3 candles
         just_flipped = False
         if len(trend) >= 4:
             if trend[-1] != trend[-2] or trend[-2] != trend[-3]:
@@ -125,21 +125,20 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
         return {
             "trend": "BUY 🟢" if trend[-1] else "SELL 🔴",
             "is_buy": trend[-1],
-            "value": round(supertrend[-1], 4) if supertrend else None,
+            "value": round(st_val, 4),
             "is_flat": is_flat,
-            "flat_duration": flat_duration,
-            "just_flipped": just_flipped,
-            "history": supertrend
+            "is_testing_flat": is_testing_flat,
+            "just_flipped": just_flipped
         }
     except Exception:
         return default_res
 
 def analyze_ema_expansion(close_prices):
     """
-    Strict EMA Action Filter:
-    Only flags 'Chớm cắt' (Cross in last 1-3 candles) OR steep expansion force.
+    QUANTITATIVE EMA FILTER:
+    Only flags if Crossover in last 3 candles OR Expansion distance > 1.5% (0.015) of price with steep slope.
     """
-    default_res = {"ema20": None, "ema50": None, "cross": "NONE", "is_expanding": False, "direction": "NEUTRAL"}
+    default_res = {"ema20": None, "ema50": None, "cross": "NONE", "is_steep_expanding": False, "direction": "NEUTRAL"}
     
     if not close_prices or len(close_prices) < 50:
         return default_res
@@ -153,24 +152,23 @@ def analyze_ema_expansion(close_prices):
 
         ema20 = ema20_list[-1]
         ema50 = ema50_list[-1]
+        curr_price = close_prices[-1]
         
-        # Detect Recent Crossover (last 1-3 candles)
+        # Crossover in last 3 candles
         cross = "NONE"
         if len(ema20_list) >= 4 and len(ema50_list) >= 4:
-            # Golden Cross check
             if (ema20_list[-4] < ema50_list[-4] or ema20_list[-3] < ema50_list[-3]) and ema20_list[-1] >= ema50_list[-1]:
                 cross = "GOLDEN"
-            # Death Cross check
             elif (ema20_list[-4] > ema50_list[-4] or ema20_list[-3] > ema50_list[-3]) and ema20_list[-1] <= ema50_list[-1]:
                 cross = "DEATH"
 
-        # Expansion Force Calculation abs(EMA20 - EMA50)
+        # QUANTITATIVE EMA RULE: Distance > 1.5% (0.015) of price AND dãn rộng dốc
         diff_curr = abs(ema20_list[-1] - ema50_list[-1])
         diff_prev1 = abs(ema20_list[-2] - ema50_list[-2])
         diff_prev2 = abs(ema20_list[-3] - ema50_list[-3])
         
-        # Steep expansion check
-        is_expanding = (diff_curr > diff_prev1 > diff_prev2) and (diff_curr / (close_prices[-1] + 1e-9) > 0.005)
+        dist_ratio = diff_curr / (curr_price + 1e-9)
+        is_steep_expanding = (dist_ratio > 0.015) and (diff_curr > diff_prev1 > diff_prev2)
         
         direction = "BUY" if ema20 > ema50 else "SELL"
         
@@ -178,16 +176,14 @@ def analyze_ema_expansion(close_prices):
             "ema20": round(ema20, 4),
             "ema50": round(ema50, 4),
             "cross": cross,
-            "is_expanding": is_expanding,
+            "is_steep_expanding": is_steep_expanding,
             "direction": direction
         }
     except Exception:
         return default_res
 
 def detect_rsi_divergence(candles, rsi_values):
-    """
-    RSI Multi-Pivot Bullish & Bearish Divergence Detection.
-    """
+    """RSI Multi-Pivot Divergence Detection."""
     if not candles or not rsi_values or len(candles) < 30 or len(rsi_values) < 30:
         return "NONE"
 
@@ -196,26 +192,22 @@ def detect_rsi_divergence(candles, rsi_values):
         rsi_offset = len(close_prices) - len(rsi_values)
         aligned_rsi = [50.0] * rsi_offset + rsi_values
         
-        # Find Local Swing Lows
         price_lows = []
         for i in range(len(close_prices) - 25, len(close_prices) - 2):
             if close_prices[i] <= close_prices[i-1] and close_prices[i] <= close_prices[i+1]:
                 price_lows.append((i, close_prices[i], aligned_rsi[i]))
 
-        # Find Local Swing Highs
         price_highs = []
         for i in range(len(close_prices) - 25, len(close_prices) - 2):
             if close_prices[i] >= close_prices[i-1] and close_prices[i] >= close_prices[i+1]:
                 price_highs.append((i, close_prices[i], aligned_rsi[i]))
 
-        # Bullish Divergence Check
         if len(price_lows) >= 2:
             p1 = price_lows[-2]
             p2 = price_lows[-1]
             if p2[1] < p1[1] and p2[2] > p1[2] + 1.5:
                 return "BULLISH"
 
-        # Bearish Divergence Check
         if len(price_highs) >= 2:
             p1 = price_highs[-2]
             p2 = price_highs[-1]
@@ -228,8 +220,9 @@ def detect_rsi_divergence(candles, rsi_values):
 
 def calculate_rsi_tuetrading(candles):
     """
-    RSI TueTrading Engine: Divergence OR Extreme Zones (<30 / >70).
-    Neutral states (35 - 65) are strictly ignored!
+    QUANTITATIVE RSI FILTER:
+    RSI <= 30 (Oversold), RSI >= 70 (Overbought), OR confirmed Divergence.
+    RSI between 31 and 69 is COMPLETELY IGNORED!
     """
     default_res = {"rsi": 50.0, "divergence": "NONE", "extreme": "NONE"}
     
@@ -265,11 +258,12 @@ def calculate_rsi_tuetrading(candles):
         curr_rsi = round(rsi_list[-1], 2)
         div = detect_rsi_divergence(candles, rsi_list)
         
+        # QUANTITATIVE RSI RULE: Only <= 30 or >= 70
         extreme = "NONE"
-        if curr_rsi <= 30:
-            extreme = "OVERSOLD" # Quá bán
-        elif curr_rsi >= 70:
-            extreme = "OVERBOUGHT" # Quá mua
+        if curr_rsi <= 30.0:
+            extreme = "OVERSOLD"
+        elif curr_rsi >= 70.0:
+            extreme = "OVERBOUGHT"
 
         return {
             "rsi": curr_rsi,
@@ -280,10 +274,6 @@ def calculate_rsi_tuetrading(candles):
         return default_res
 
 def analyze_timeframe(candles):
-    """
-    Strict Timeframe Action Filter Engine.
-    Returns structured events for Trend, EMA, and RSI.
-    """
     if not candles or len(candles) < 30:
         return None
         

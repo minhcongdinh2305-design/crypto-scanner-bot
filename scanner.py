@@ -30,7 +30,8 @@ def format_indicator_line(detail_map):
 
 def get_coin_report(symbol="BTC"):
     """
-    Strict Action-Based Report Generator with Directional Confluence & Conflict Check.
+    Strict Quantitative Action Report Generator.
+    Prints 'KHÔNG CÓ TÍN HIỆU' when no quantitative thresholds are triggered.
     """
     symbol_upper = symbol.upper().replace("USDT", "")
     full_symbol = symbol_upper + "USDT"
@@ -62,8 +63,8 @@ def get_coin_report(symbol="BTC"):
         ema = analysis["ema_info"]
         rsi = analysis["rsi_tue"]
 
-        # 1. STRICT TREND FILTER: Only record if Flat S/R or Flipped color in last 1-3 candles
-        if st_maj["is_flat"]:
+        # 1. STRICT QUANTITATIVE TREND FILTER (Distance <= 0.5% OR Flipped in last 3 candles)
+        if st_maj["is_testing_flat"]:
             if st_maj["is_buy"]:
                 trend_detail_map["Xanh Flat"].append(tf_str)
                 has_buy_trend = True
@@ -78,14 +79,14 @@ def get_coin_report(symbol="BTC"):
                 trend_detail_map["Đổi màu Đỏ"].append(tf_str)
                 has_sell_trend = True
 
-        # 2. STRICT EMA FILTER: Only record if Recent Crossover or Steep Expansion
+        # 2. STRICT QUANTITATIVE EMA FILTER (Crossover in 3 candles OR Distance > 1.5%)
         if ema["cross"] == "GOLDEN":
             ema_detail_map["Chớm cắt lên"].append(tf_str)
             has_buy_ema = True
         elif ema["cross"] == "DEATH":
             ema_detail_map["Chớm cắt xuống"].append(tf_str)
             has_sell_ema = True
-        elif ema["is_expanding"]:
+        elif ema["is_steep_expanding"]:
             if ema["direction"] == "BUY":
                 ema_detail_map["Mở rộng lên"].append(tf_str)
                 has_buy_ema = True
@@ -93,7 +94,7 @@ def get_coin_report(symbol="BTC"):
                 ema_detail_map["Mở rộng xuống"].append(tf_str)
                 has_sell_ema = True
 
-        # 3. STRICT RSI FILTER: Only record if Divergence OR Extreme Zones (<30 / >70)
+        # 3. STRICT QUANTITATIVE RSI FILTER (Divergence OR RSI <= 30 / RSI >= 70)
         if rsi["divergence"] == "BULLISH":
             rsi_detail_map["Phân kỳ tăng"].append(tf_str)
             has_buy_rsi = True
@@ -112,14 +113,12 @@ def get_coin_report(symbol="BTC"):
     ema_line = format_indicator_line(ema_detail_map)
     rsi_line = format_indicator_line(rsi_detail_map)
 
-    # Indicator Presence Checks
     is_trend_ok = trend_line != "KHÔNG CÓ TÍN HIỆU"
     is_ema_ok = ema_line != "KHÔNG CÓ TÍN HIỆU"
     is_rsi_ok = rsi_line != "KHÔNG CÓ TÍN HIỆU"
 
     indicator_count = (1 if is_trend_ok else 0) + (1 if is_ema_ok else 0) + (1 if is_rsi_ok else 0)
 
-    # Directional Conflict Check
     any_buy = has_buy_trend or has_buy_ema or has_buy_rsi
     any_sell = has_sell_trend or has_sell_ema or has_sell_rsi
 
@@ -161,9 +160,6 @@ def analyze_single_coin_for_scan(coin):
     return None
 
 def scan_market(coins_list=None):
-    """
-    Market Watchlist Scanner using strict action-based logic.
-    """
     if not coins_list or len(coins_list) == 0:
         coins_list = TOP_COINS
 
