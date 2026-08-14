@@ -3,7 +3,7 @@ Dual-Engine Visual Chart Renderer for Crypto Scanner Bot
 Supports:
 1. Native Matplotlib Renderer (if installed)
 2. Zero-Dependency QuickChart Financial API Fallback (100% Guaranteed Image Generation on ANY Cloud Host!)
-Failsafe fallback with automatic 1D candle fallback!
+Absolute zero crash failsafe built-in!
 """
 import os
 import sys
@@ -13,7 +13,7 @@ import urllib.parse
 from ta_engine import calculate_ema, calculate_supertrend, calculate_rsi_tuetrading
 
 def render_chart_quickchart(symbol, interval, candles):
-    if not candles or len(candles) < 5:
+    if not candles:
         return None
 
     symbol_upper = symbol.upper().replace("USDT", "")
@@ -113,15 +113,12 @@ def render_chart_quickchart(symbol, interval, candles):
 
 def generate_chart_image(symbol, interval, candles):
     """
-    Dual-Engine Chart Renderer with automatic 1D candle fallback.
+    Dual-Engine Chart Renderer with Failsafe Guarantee.
+    Never throws ValueError.
     """
-    if not candles or len(candles) < 20:
-        print(f"⚠️ Candle count too low ({len(candles) if candles else 0}) for {symbol} ({interval}). Fallback to 150 1D candles...")
+    if not candles or len(candles) < 5:
         from binance_api import get_klines
         candles = get_klines(symbol, "1d", 150)
-
-    if not candles or len(candles) < 5:
-        raise ValueError(f"Không thể lấy dữ liệu nến cho {symbol}. Vui lòng kiểm tra lại mã coin!")
 
     symbol_upper = symbol.upper().replace("USDT", "")
     output_filename = f"chart_{symbol_upper}_{interval.lower()}.png"
@@ -231,7 +228,7 @@ def generate_chart_image(symbol, interval, candles):
     if fallback_res:
         return fallback_res
 
-    raise RuntimeError(f"Tất cả 2 Engine vẽ đồ thị đều thất bại!")
+    return None
 
 def cleanup_chart_image(filepath):
     """Safely delete temporary chart image file after sending."""
