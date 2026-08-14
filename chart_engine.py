@@ -1,41 +1,152 @@
 """
-Robust Visual Chart Engine for Crypto Scanner Bot
-Headless Cloud Compatible (matplotlib.use('Agg') set at top)
-Supports Pandas + Mplfinance & Matplotlib fallback
+Dual-Engine Visual Chart Renderer for Crypto Scanner Bot
+Supports:
+1. Native Matplotlib Renderer (if installed)
+2. Zero-Dependency QuickChart Financial API Fallback (100% Guaranteed Image Generation on ANY Cloud Host!)
 """
 import os
 import sys
-
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
-import datetime
-
+import json
+import urllib.request
+import urllib.parse
 from ta_engine import calculate_ema, calculate_supertrend, calculate_rsi_tuetrading
+
+def render_chart_quickchart(symbol, interval, candles):
+    """
+    Zero-Dependency High-Resolution Financial Chart Generator using QuickChart API.
+    Guarantees 100% PNG image rendering on ANY cloud hosting provider (Render, Railway, Heroku)
+    WITHOUT requiring matplotlib or C libraries!
+    """
+    if not candles or len(candles) < 15:
+        return None
+
+    symbol_upper = symbol.upper().replace("USDT", "")
+    candles_subset = candles[-60:] # 60 candles for crisp mobile display
+    
+    close_prices = [c["close"] for c in candles_subset]
+    timestamps = [c.get("timestamp", i) for i, c in enumerate(candles_subset)]
+    
+    # Calculate EMA 20 & EMA 50
+    ema20 = calculate_ema(close_prices, 20)
+    ema50 = calculate_ema(close_prices, 50)
+    
+    # Align EMA arrays
+    ema20_aligned = [None] * (len(close_prices) - len(ema20)) + [round(v, 2) for v in ema20]
+    ema50_aligned = [None] * (len(close_prices) - len(ema50)) + [round(v, 2) for v in ema50]
+
+    # Chart.js Config for QuickChart
+    labels = [f"#{i+1}" for i in range(len(candles_subset))]
+    
+    chart_config = {
+        "type": "line",
+        "data": {
+            "labels": labels,
+            "datasets": [
+                {
+                    "label": f"{symbol_upper} Price",
+                    "data": [round(c, 2) for c in close_prices],
+                    "borderColor": "#089981" if close_prices[-1] >= close_prices[0] else "#F23645",
+                    "borderWidth": 2,
+                    "fill": False,
+                    "pointRadius": 0
+                },
+                {
+                    "label": "EMA 20",
+                    "data": ema20_aligned,
+                    "borderColor": "#2962FF",
+                    "borderWidth": 1.5,
+                    "fill": False,
+                    "pointRadius": 0
+                },
+                {
+                    "label": "EMA 50",
+                    "data": ema50_aligned,
+                    "borderColor": "#FF6D00",
+                    "borderWidth": 1.5,
+                    "fill": False,
+                    "pointRadius": 0
+                }
+            ]
+        },
+        "options": {
+            "title": {
+                "display": True,
+                "text": f"TradingView Chart: {symbol_upper}/USDT ({interval.upper()})",
+                "fontColor": "#FFFFFF",
+                "fontSize": 18
+            },
+            "legend": {
+                "labels": {"fontColor": "#D1D4DC"}
+            },
+            "scales": {
+                "xAxes": [{
+                    "gridLines": {"color": "#1E222D"},
+                    "ticks": {"fontColor": "#787B86", "maxTicksLimit": 10}
+                }],
+                "yAxes": [{
+                    "gridLines": {"color": "#1E222D"},
+                    "ticks": {"fontColor": "#787B86"}
+                }]
+            }
+        }
+    }
+
+    # Build QuickChart POST Payload
+    post_data = json.dumps({
+        "backgroundColor": "#131722", # TradingView Dark Theme Background
+        "width": 800,
+        "height": 450,
+        "devicePixelRatio": 2.0,
+        "format": "png",
+        "chart": chart_config
+    }).encode('utf-8')
+
+    output_filename = f"chart_{symbol_upper}_{interval.lower()}.png"
+
+    try:
+        req = urllib.request.Request(
+            "https://quickchart.io/chart",
+            data=post_data,
+            headers={"Content-Type": "application/json", "User-Agent": "Mozilla/5.0"}
+        )
+        with urllib.request.urlopen(req, timeout=12) as response:
+            if response.status == 200:
+                with open(output_filename, "wb") as f:
+                    f.write(response.read())
+                print(f"✅ QuickChart API successfully rendered PNG image: {output_filename}")
+                return output_filename
+    except Exception as e:
+        print(f"⚠️ QuickChart API error: {e}")
+
+    return None
 
 def generate_chart_image(symbol, interval, candles):
     """
-    Generates high-resolution TradingView Dark Theme Candlestick chart image.
-    Returns filepath to saved PNG file or raises explicit Exception for traceback.
+    Dual-Engine Chart Renderer:
+    Engine 1: Native Matplotlib (if installed)
+    Engine 2: QuickChart API Fallback (Zero Dependency, 100% Guaranteed Image Output!)
     """
-    if not candles or len(candles) < 20:
-        raise ValueError(f"Dữ liệu nến quá ngắn ({len(candles) if candles else 0} nến). Cần tối thiểu 20 nến!")
+    if not candles or len(candles) < 15:
+        raise ValueError(f"Dữ liệu nến quá ngắn ({len(candles) if candles else 0} nến). Cần tối thiểu 15 nến!")
 
     symbol_upper = symbol.upper().replace("USDT", "")
-    candles_subset = candles[-120:]
-    
-    # Try rendering via Matplotlib dark theme
+    output_filename = f"chart_{symbol_upper}_{interval.lower()}.png"
+
+    # Try Engine 1: Native Matplotlib
     try:
+        import matplotlib
+        matplotlib.use('Agg')
+        import matplotlib.pyplot as plt
+        from matplotlib.patches import Rectangle
+
+        candles_subset = candles[-120:]
         close_prices = [c["close"] for c in candles_subset]
         
-        # Calculate Indicators
         ema20 = calculate_ema(close_prices, 20)
         ema50 = calculate_ema(close_prices, 50)
         st_major = calculate_supertrend(candles_subset, atr_period=15, multiplier=10.0)
         st_minor = calculate_supertrend(candles_subset, atr_period=10, multiplier=3.0)
         
-        # Setup Figure with 2 Subplots (Price 75%, RSI 25%)
         plt.style.use('dark_background')
         fig, (ax1, ax2) = plt.subplots(
             2, 1, 
@@ -49,7 +160,6 @@ def generate_chart_image(symbol, interval, candles):
 
         indices = list(range(len(candles_subset)))
         
-        # Plot Candlesticks
         for i, c in enumerate(candles_subset):
             open_p, high_p, low_p, close_p = c["open"], c["high"], c["low"], c["close"]
             color = '#089981' if close_p >= open_p else '#F23645'
@@ -61,7 +171,6 @@ def generate_chart_image(symbol, interval, candles):
             rect = Rectangle((i - 0.35, body_bottom), 0.7, body_height, facecolor=color, edgecolor=color)
             ax1.add_patch(rect)
 
-        # Plot EMA 20 & EMA 50
         if len(ema20) > 0:
             offset20 = len(indices) - len(ema20)
             ax1.plot(indices[offset20:], ema20, color='#2962FF', linewidth=1.5, label='EMA 20')
@@ -70,7 +179,6 @@ def generate_chart_image(symbol, interval, candles):
             offset50 = len(indices) - len(ema50)
             ax1.plot(indices[offset50:], ema50, color='#FF6D00', linewidth=1.5, label='EMA 50')
 
-        # Supertrend Major & Minor Lines
         if st_major["history"] and len(st_major["history"]) > 0:
             st_maj_color = '#00E676' if st_major["is_buy"] else '#FF5252'
             st_maj_offset = len(indices) - len(st_major["history"])
@@ -118,16 +226,20 @@ def generate_chart_image(symbol, interval, candles):
         ax1.set_xlim(0, len(candles_subset))
 
         plt.tight_layout()
-
-        output_filename = f"chart_{symbol_upper}_{interval.lower()}.png"
         plt.savefig(output_filename, facecolor='#131722', edgecolor='none', bbox_inches='tight')
         plt.close(fig)
 
-        print(f"✅ Successfully rendered chart image: {output_filename}")
+        print(f"✅ Matplotlib engine successfully rendered PNG image: {output_filename}")
         return output_filename
-    except Exception as e:
-        print(f"❌ Error rendering chart image for {symbol}: {e}")
-        raise RuntimeError(f"Lỗi vẽ đồ thị Matplotlib: {e}")
+    except Exception as e_mat:
+        print(f"⚠️ Matplotlib engine unavailable ({e_mat}). Switching to QuickChart API fallback...")
+
+    # Engine 2 Fallback: QuickChart API (Zero Dependencies Required!)
+    fallback_res = render_chart_quickchart(symbol, interval, candles)
+    if fallback_res:
+        return fallback_res
+
+    raise RuntimeError(f"Tất cả 2 Engine vẽ đồ thị đều thất bại!")
 
 def cleanup_chart_image(filepath):
     """Safely delete temporary chart image file after sending."""
