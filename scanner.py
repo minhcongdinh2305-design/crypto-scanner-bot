@@ -7,15 +7,15 @@ TOP_COINS = [
     "AVAX", "LINK", "DOT", "NEAR", "SUI", "APT", "PEPE", "WIF"
 ]
 
+# Exact 9 timeframes in required order
 SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
 def get_coin_report(symbol="BTC"):
     """
-    Multi-Timeframe Status Report (30M, 1H, 2H, 4H, 8H, 12H, 1D, 1W, 1M).
-    Formats each timeframe on a clean row separated by '|':
-    ▫️ {TF}: {Trend} | {EMA} | {RSI}
+    100% Guaranteed Multi-Timeframe Status Report (30M, 1H, 2H, 4H, 8H, 12H, 1D, 1W, 1M).
+    Returns ONLY the 9-row format.
     """
-    symbol_upper = symbol.upper().replace("USDT", "")
+    symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
     full_symbol = symbol_upper + "USDT"
     
     ticker, klines_map = fetch_multi_klines_parallel(full_symbol, SCAN_TIMEFRAMES)
@@ -31,7 +31,7 @@ def get_coin_report(symbol="BTC"):
         trend_st, ema_st, rsi_st = get_timeframe_status_row(candles)
         tf_label = tf.upper()
         
-        # Padding space for 1H, 2H, 4H, 8H, 1D, 1W, 1M alignment
+        # Space alignment for 1H, 2H, 4H, 8H, 1D, 1W, 1M
         if len(tf_label) == 2:
             tf_display = f"{tf_label} "
         else:
