@@ -1,5 +1,9 @@
 """
-100% User Exact Math SuperTrend Engine (Pure Python - Zero External PIP Dependencies Required)
+Pure Python SuperTrend Engine (Zero External Dependencies Required)
+100% Exact User Formula Implementation:
+- Fast ST (ATR 10, Mult 3.0) -> low_fast (🔵 Blue) & up_fast (🔴 Red)
+- Slow ST (ATR 15, Mult 10.0) -> low_slow (🟢 Green) & up_slow (🟡 Yellow)
+Returns 'Chưa đủ dữ liệu nến' for empty/short 1W and 1M candles.
 """
 
 def calculate_supertrend(candles, period=10, multiplier=3.0):
@@ -18,7 +22,6 @@ def calculate_supertrend(candles, period=10, multiplier=3.0):
         tr_val = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
         tr.append(tr_val)
 
-    # Rolling mean ATR
     atr = [0.0] * n
     for i in range(period - 1, n):
         atr[i] = sum(tr[i - period + 1 : i + 1]) / period
@@ -43,7 +46,7 @@ def calculate_supertrend(candles, period=10, multiplier=3.0):
 
         if closes[i] > upperband[i-1]:
             trend[i] = 1
-        elif closes[i] < lowerband[i-1]:
+        elif closes[i] < upperband[i-1]:
             trend[i] = -1
         else:
             trend[i] = trend[i-1]
@@ -55,15 +58,20 @@ def calculate_supertrend(candles, period=10, multiplier=3.0):
     return lowerband, upperband, trend
 
 def analyze_4_trends(df):
-    if df is None or len(df) < 30:
-        return "Thiếu dữ liệu nến"
+    if df is None:
+        return "Chưa đủ dữ liệu nến"
         
     if isinstance(df, list):
         candles = df
     else:
-        # Convert DataFrame to list of dicts
-        candles = df.to_dict('records')
-        
+        try:
+            candles = df.to_dict('records')
+        except Exception:
+            candles = []
+
+    if not candles or len(candles) < 15:
+        return "Chưa đủ dữ liệu nến"
+
     current_close = candles[-1]["close"]
     
     # 1. Supertrend Nhanh (Blue / Red): ATR 10, Multiplier 3
@@ -71,8 +79,8 @@ def analyze_4_trends(df):
     # 2. Supertrend Chậm (Green / Yellow): ATR 15, Multiplier 10
     low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0)
     
-    if not low_fast or not low_slow:
-        return "Thiếu dữ liệu nến"
+    if not low_fast or not low_slow or not up_fast or not up_slow:
+        return "Chưa đủ dữ liệu nến"
 
     # Lấy giá trị gần nhất
     val_blue = low_fast[-1]
@@ -81,10 +89,10 @@ def analyze_4_trends(df):
     val_yellow = up_slow[-1]
     
     # Tính % khoảng cách
-    diff_blue = ((current_close - val_blue) / current_close) * 100
-    diff_green = ((current_close - val_green) / current_close) * 100
-    diff_red = ((val_red - current_close) / current_close) * 100
-    diff_yellow = ((val_yellow - current_close) / current_close) * 100
+    diff_blue = ((current_close - val_blue) / current_close) * 100.0
+    diff_green = ((current_close - val_green) / current_close) * 100.0
+    diff_red = ((val_red - current_close) / current_close) * 100.0
+    diff_yellow = ((val_yellow - current_close) / current_close) * 100.0
     
     # Format văn bản kèm icon và số %
     res = f"Trên 🔵 (+{diff_blue:.1f}%), Trên 🟢 (+{diff_green:.1f}%) | Dưới 🔴 (-{diff_red:.1f}%), Dưới 🟡 (-{diff_yellow:.1f}%)"

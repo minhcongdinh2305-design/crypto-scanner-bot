@@ -5,9 +5,10 @@ Pure Python Implementation. Zero PIP dependencies required!
 Compatible with 24/7 Cloud Deployment (Render / Railway / Replit).
 
 Features:
-1. Color Circle 4-Trend Scanner (🔴 🟡 🔵 🟢) across 9 timeframes!
-2. TradingView Real Chart Snapshot rendering for commands with timeframe (/btc4h, /link3d)
-3. Execution speed: < 0.3s!
+1. Wrap message handler in try...except block with direct traceback report to Telegram.
+2. Supports all syntax: /link, /near, /btc, /linkscan, link, near, btc.
+3. Fallback to plain text if Telegram Markdown parsing fails.
+4. Execution speed: < 0.3s!
 """
 import urllib.request
 import urllib.parse
@@ -63,11 +64,23 @@ def telegram_api(token, method, params=None):
         return None
 
 def send_message(token, chat_id, text):
-    return telegram_api(token, "sendMessage", {
+    """
+    Sends message with Markdown mode first.
+    Falls back to Plain Text if Markdown parsing fails so bot NEVER goes silent!
+    """
+    res = telegram_api(token, "sendMessage", {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "Markdown"
     })
+    
+    if not res or not res.get("ok"):
+        # Fallback to plain text
+        res = telegram_api(token, "sendMessage", {
+            "chat_id": chat_id,
+            "text": text
+        })
+    return res
 
 def send_photo(token, chat_id, photo_path, caption=""):
     url = f"https://api.telegram.org/bot{token}/sendPhoto"
@@ -165,8 +178,17 @@ def start_webhook_server():
     httpd.serve_forever()
 
 def parse_coin_and_tf(cmd_text):
+    """
+    Parses all user input formats:
+    - /link, /near, /btc
+    - /linkscan, /nearscan
+    - /btc4h, /link3d
+    - link, near, btc
+    """
     clean = cmd_text.strip().lower()
-    
+    if clean.startswith("/"):
+        clean = clean[1:]
+        
     if clean.endswith("scan") and len(clean) > 4 and clean != "scan":
         sym = clean[:-4].upper()
         return sym, None
@@ -193,8 +215,8 @@ def parse_coin_and_tf(cmd_text):
 
 def handle_update(token, update, bot_username=""):
     """
-    Process incoming Telegram message.
-    Outputs Color Circle Icon 4-Trend Scan Report (🔴 🟡 🔵 🟢).
+    Process incoming Telegram message wrapped in a global try...except block.
+    In case of any error, automatically prints error traceback directly to Telegram!
     """
     global default_chat_id, config
     
@@ -213,68 +235,60 @@ def handle_update(token, update, bot_username=""):
     if not text:
         return
 
-    is_command = text.startswith("/")
-    is_tagged = bot_username and f"@{bot_username.lower()}" in text.lower()
-    
-    if not is_command and not is_tagged:
-        return
-
-    clean_text = text.split("@")[0].strip()
-    if clean_text.startswith("/"):
-        clean_text = clean_text[1:].strip()
+    try:
+        clean_text = text.split("@")[0].strip()
+        parts = clean_text.split()
+        cmd = parts[0].lower()
+        if cmd.startswith("/"):
+            cmd = cmd[1:]
         
-    parts = clean_text.split()
-    cmd = parts[0].lower()
-    
-    if cmd in ["start", "help"]:
-        welcome = (
-            "🤖 **TRỢ LÝ CHỈ BÁO CRYPTO (CI STUDIO BOT)**\n\n"
-            "📌 **CÂU LỆNH SỬ DỤNG:**\n"
-            "• `/near`, `/btc`, `/link` : Xem chi tiết 4 đường Trend 🔴 🟡 🔵 🟢!\n"
-            "• `/btc4h`, `/near3d` : Chụp ảnh CHART TradingView THẬT 100% + Báo cáo!\n"
-            "• `/scan` : Quét Top Coins\n"
-            "• `/help` : Hướng dẫn"
-        )
-        send_message(token, chat_id, welcome)
-        return
+        if cmd in ["start", "help"]:
+            welcome = (
+                "🤖 **TRỢ LÝ CHỈ BÁO CRYPTO (CI STUDIO BOT)**\n\n"
+                "📌 **CÂU LỆNH SỬ DỤNG:**\n"
+                "• `/btc`, `/link`, `/near` (hoặc gõ `link`, `near`)\n"
+                "• `/btc4h`, `/near3d` : Chụp ảnh CHART TradingView THẬT 100% + Báo cáo!\n"
+                "• `/scan` : Quét Top Coins\n"
+                "• `/help` : Hướng dẫn"
+            )
+            send_message(token, chat_id, welcome)
+            return
 
-    if cmd == "scan":
-        if len(parts) > 1 and parts[1].lower() not in ["btc", "eth", "sol", "bnb"]:
-            symbol = parts[1].upper().replace("SCAN", "")
-            report = scan_coin(symbol)
+        if cmd == "scan":
+            if len(parts) > 1 and parts[1].lower() not in ["btc", "eth", "sol", "bnb"]:
+                symbol = parts[1].upper().replace("SCAN", "")
+                report = scan_coin(symbol)
+                send_message(token, chat_id, report)
+                return
+
+            custom_coins = parts[1:] if len(parts) > 1 else None
+            report = scan_market(custom_coins)
             send_message(token, chat_id, report)
             return
 
-        custom_coins = parts[1:] if len(parts) > 1 else None
-        report = scan_market(custom_coins)
-        send_message(token, chat_id, report)
-        return
-
-    symbol, timeframe = parse_coin_and_tf(clean_text)
-    
-    if symbol:
-        report = scan_coin(symbol)
+        symbol, timeframe = parse_coin_and_tf(clean_text)
         
-        # If timeframe requested (e.g. /btc4h or /link3d), capture TradingView Chart Snapshot!
-        if timeframe:
-            try:
-                photo_path = generate_chart_image(symbol, timeframe)
-                if photo_path and os.path.exists(photo_path):
-                    res = send_photo(token, chat_id, photo_path, report)
-                    cleanup_chart_image(photo_path)
-                    if res and res.get("ok"):
-                        return
-                    else:
-                        err_desc = res.get("description", "Không xác định") if res else "Telegram API Timeout"
-                        send_message(token, chat_id, f"❌ LỖI GỬI ẢNH TELEGRAM:\n{err_desc}")
-                        return
-            except Exception as e:
-                error_msg = f"❌ LỖI TẠO ẢNH ({symbol} {timeframe}):\n{str(e)}\n\nChi tiết Traceback:\n`{traceback.format_exc()[:700]}`"
-                send_message(token, chat_id, error_msg)
-                return
+        if symbol:
+            report = scan_coin(symbol)
+            
+            # If timeframe requested (e.g. /btc4h or /link3d), capture TradingView Chart Snapshot!
+            if timeframe:
+                try:
+                    photo_path = generate_chart_image(symbol, timeframe)
+                    if photo_path and os.path.exists(photo_path):
+                        res = send_photo(token, chat_id, photo_path, report)
+                        cleanup_chart_image(photo_path)
+                        if res and res.get("ok"):
+                            return
+                except Exception as e_photo:
+                    print(f"⚠️ Photo error: {e_photo}")
 
-        # Return Color Circle Icon 4-Trend Scan Report
-        send_message(token, chat_id, report)
+            # Return 4-Trend Scan Report
+            send_message(token, chat_id, report)
+
+    except Exception as e:
+        error_trace = f"❌ **LỖI THỰC THI BOT:**\n`{str(e)}`\n\n**Chi tiết Traceback:**\n`{traceback.format_exc()[:700]}`"
+        send_message(token, chat_id, error_trace)
 
 def run_bot():
     global bot_token
@@ -297,9 +311,9 @@ def run_bot():
     server_thread.start()
 
     print("\n" + "="*60)
-    print(f"🚀 TELEGRAM BOT + COLOR CIRCLE 4-TREND SCANNER 24/7 ACTIVE!")
+    print(f"🚀 TELEGRAM BOT 24/7 ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
-    print(f"• Output: 100% CHI TIẾT 4 TREND Report (🔴 🟡 🔵 🟢)")
+    print(f"• Listening to: /link, /near, /btc, link, near, btc")
     print("="*60 + "\n")
 
     offset = 0
