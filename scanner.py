@@ -7,7 +7,11 @@ TOP_COINS = [
     "AVAX", "LINK", "DOT", "NEAR", "SUI", "APT", "PEPE", "WIF"
 ]
 
+ALL_TIMEFRAMES = ["1d", "12h", "8h", "4h", "2h", "1h", "30m", "15m"]
+
 def format_price(val):
+    if not val:
+        return "N/A"
     if val >= 1000:
         return f"${val:,.2f}"
     elif val >= 1:
@@ -17,96 +21,145 @@ def format_price(val):
 
 def get_coin_report(symbol="BTC"):
     """
-    Ultra-fast parallel multi-timeframe analysis for a coin.
-    Response time < 0.3s!
+    Ultra-concise minimal report format according to exact user specification:
+    🪙 {SYMBOL} | Giá: {PRICE} ({CHANGE_24H}%)
+    🎯 Setup: {LONG/SHORT/NEUTRAL} (Điểm: {SCORE}/100)
+
+    1. Trend: {ĐẠT / KHÔNG ĐẠT} - {BUY mạnh / SELL mạnh / Đi ngang} (Khung: {danh_sách_khung})
+    2. EMA: {ĐẠT / KHÔNG ĐẠT} - {Cắt mở rộng / Thu hẹp / Đang cản} (Khung: {danh_sách_khung})
+    3. RSI: {ĐẠT / KHÔNG ĐẠT} - {Phân kỳ tăng / Phân kỳ giảm / Bung nén} (Khung: {danh_sách_khung})
+
+    👉 Kết luận: {ĐỦ ĐIỀU KIỆN A+ / Theo dõi thêm} ({PASSED_COUNT}/3 Chỉ báo đồng thuận)
     """
     symbol_upper = symbol.upper().replace("USDT", "")
     full_symbol = symbol_upper + "USDT"
     
-    # Parallel fetch ticker & all 4 timeframes
-    ticker, klines_map = fetch_multi_klines_parallel(full_symbol, ["15m", "1h", "4h", "1d"])
+    ticker, klines_map = fetch_multi_klines_parallel(full_symbol, ALL_TIMEFRAMES)
 
     if not ticker:
-        return f"❌ Không tìm thấy dữ liệu cho cặp **{symbol_upper}/USDT**. Vui lòng kiểm tra lại tên coin!"
+        return f"❌ Không tìm thấy dữ liệu cho cặp **{symbol_upper}/USDT**!"
 
-    tf_15m = analyze_timeframe(klines_map.get("15m", []))
-    tf_1h  = analyze_timeframe(klines_map.get("1h", []))
-    tf_4h  = analyze_timeframe(klines_map.get("4h", []))
-    tf_1d  = analyze_timeframe(klines_map.get("1d", []))
+    # Multi-timeframe evaluation arrays
+    trend_tfs = []
+    trend_type = "Đi ngang"
+    ema_tfs = []
+    ema_type = "Thu hẹp"
+    rsi_tfs = []
+    rsi_types = []
+
+    buy_trend_count = 0
+    sell_trend_count = 0
+    
+    tf_analyses = {}
+    for tf in ALL_TIMEFRAMES:
+        candles = klines_map.get(tf, [])
+        analysis = analyze_timeframe(candles)
+        if analysis:
+            tf_analyses[tf] = analysis
+            tf_str = tf.upper()
+            
+            # 1. Trend Evaluation
+            st_maj = analysis["st_major"]
+            st_min = analysis["st_minor"]
+            if st_maj["is_buy"] and st_min["is_buy"]:
+                buy_trend_count += 1
+                trend_tfs.append(tf_str)
+            elif not st_maj["is_buy"] and not st_min["is_buy"]:
+                sell_trend_count += 1
+                trend_tfs.append(tf_str)
+            elif st_maj["is_flat"]:
+                trend_tfs.append(tf_str)
+
+            # 2. EMA Evaluation
+            ema = analysis["ema_info"]
+            if ema["is_expanding"] or ema["cross"] != "NONE":
+                ema_tfs.append(tf_str)
+                if ema["is_expanding"]:
+                    ema_type = "Cắt mở rộng"
+
+            # 3. RSI Evaluation
+            rsi = analysis["rsi_tue"]
+            if rsi["divergence"] != "NONE" or rsi["squeeze_breakout"] or rsi["rsi"] <= 35 or rsi["rsi"] >= 70:
+                rsi_tfs.append(tf_str)
+                if "BULLISH" in rsi["divergence"]:
+                    if "Phân kỳ tăng" not in rsi_types: rsi_types.append("Phân kỳ tăng")
+                elif "BEARISH" in rsi["divergence"]:
+                    if "Phân kỳ giảm" not in rsi_types: rsi_types.append("Phân kỳ giảm")
+                if rsi["squeeze_breakout"]:
+                    if "Bung nén" not in rsi_types: rsi_types.append("Bung nén")
+
+    # Select Primary Timeframe (4H or 1H)
+    primary_tf = tf_analyses.get("4h") or tf_analyses.get("1h") or list(tf_analyses.values())[0]
+    
+    # 1. Trend Assessment
+    is_trend_pass = len(trend_tfs) >= 2
+    if buy_trend_count > sell_trend_count:
+        trend_type = "BUY mạnh"
+    elif sell_trend_count > buy_trend_count:
+        trend_type = "SELL mạnh"
+    else:
+        trend_type = "Đi ngang"
+    trend_status = "ĐẠT" if is_trend_pass else "KHÔNG ĐẠT"
+    trend_tfs_str = ", ".join(trend_tfs[:4]) if trend_tfs else "Không"
+
+    # 2. EMA Assessment
+    is_ema_pass = len(ema_tfs) >= 1 or primary_tf["ema_info"]["is_expanding"]
+    ema_status = "ĐẠT" if is_ema_pass else "KHÔNG ĐẠT"
+    ema_tfs_str = ", ".join(ema_tfs[:4]) if ema_tfs else "Không"
+
+    # 3. RSI Assessment
+    is_rsi_pass = len(rsi_tfs) >= 1 or primary_tf["rsi_tue"]["divergence"] != "NONE" or primary_tf["rsi_tue"]["squeeze_breakout"]
+    rsi_status = "ĐẠT" if is_rsi_pass else "KHÔNG ĐẠT"
+    rsi_type_str = " & ".join(rsi_types) if rsi_types else "Bình thường"
+    rsi_tfs_str = ", ".join(rsi_tfs[:4]) if rsi_tfs else "Không"
+
+    # Passed Count Calculation
+    passed_count = (1 if is_trend_pass else 0) + (1 if is_ema_pass else 0) + (1 if is_rsi_pass else 0)
+
+    # Conclusion & Rating Formatting
+    if passed_count == 3 and primary_tf["score"] >= 65:
+        conclusion = f"ĐỦ ĐIỀU KIỆN A+ ({passed_count}/3 Chỉ báo đồng thuận)"
+        setup_label = "LONG CỰC MẠNH"
+    elif passed_count == 3 and primary_tf["score"] <= 35:
+        conclusion = f"ĐỦ ĐIỀU KIỆN A+ ({passed_count}/3 Chỉ báo đồng thuận)"
+        setup_label = "SHORT CỰC MẠNH"
+    elif passed_count >= 2:
+        conclusion = f"TÍN HIỆU TỐT ({passed_count}/3 Chỉ báo đồng thuận)"
+        setup_label = "MUA (LONG)" if buy_trend_count >= sell_trend_count else "BÁN (SHORT)"
+    else:
+        conclusion = f"Theo dõi thêm ({passed_count}/3 Chỉ báo đồng thuận)"
+        setup_label = "TRUNG TÍNH"
 
     change_pct = ticker['priceChangePercent']
-    change_icon = "🚀 +" if change_pct >= 0 else "🔻 "
+    change_str = f"+{change_pct:.2f}%" if change_pct >= 0 else f"{change_pct:.2f}%"
 
     report = []
-    report.append(f"📊 **BÁO CÁO PHÂN TÍCH: {symbol_upper}/USDT**")
-    report.append(f"💵 **Giá hiện tại**: `{format_price(ticker['lastPrice'])}` ({change_icon}{change_pct:.2f}%)")
-    report.append(f"📈 24h High: `{format_price(ticker['highPrice'])}` | 📉 Low: `{format_price(ticker['lowPrice'])}`\n")
+    report.append(f"🪙 **{symbol_upper}/USDT** | Giá: `{format_price(ticker['lastPrice'])}` ({change_str})")
+    report.append(f"🎯 Setup: **{setup_label}** (Điểm: `{primary_tf['score']}/100`)\n")
 
-    report.append("🔍 **CHỈ BÁO THEO KHUNG THỜI GIAN:**\n")
+    report.append(f"1. Trend: **{trend_status}** - {trend_type} ({trend_tfs_str})")
+    report.append(f"2. EMA: **{ema_status}** - {ema_type} ({ema_tfs_str})")
+    report.append(f"3. RSI: **{rsi_status}** - {rsi_type_str} ({rsi_tfs_str})\n")
 
-    tfs = [("15 phút (15m)", tf_15m), ("1 giờ (1h)", tf_1h), ("4 giờ (4h)", tf_4h), ("1 ngày (1D)", tf_1d)]
-
-    for tf_name, tf_data in tfs:
-        if not tf_data:
-            continue
-        
-        report.append(f"⏱ **Khung {tf_name}**:")
-        report.append(f"  • RSI(14): `{tf_data['rsi']}` ➔ {tf_data['rsi_status']}")
-        report.append(f"  • Xu hướng EMA: {tf_data['ema_trend']}")
-        if tf_data['ema_cross'] != "Không":
-            report.append(f"  • Tín hiệu Cắt: **{tf_data['ema_cross']}**")
-        report.append(f"  • MACD: {tf_data['macd_status']}")
-        report.append("")
-
-    # Overall Summary / Strategy Verdict
-    rsi_4h = tf_4h['rsi'] if tf_4h else 50
-    ema_1h = tf_1h['ema_trend'] if tf_1h else ""
-    
-    report.append("💡 **ĐÁNH GIÁ NHANH HỆ THỐNG GIAO DỊCH:**")
-    if rsi_4h <= 35 and "Uptrend" in ema_1h:
-        report.append("✅ **TÍN HIỆU ĐẸP**: RSI 4h đang ở vùng quá bán + Frame 1h giữ được nhịp Uptrend. Thích hợp canh MUA (Long)!")
-    elif rsi_4h >= 65:
-        report.append("⚠️ **CHÚ Ý**: RSI 4h đang đi vào vùng Quá Mua. Tránh FOMO mua đuổi, canh chốt lời!")
-    else:
-        report.append("🔄 **TRUNG TÍNH**: Thị trường đang tích lũy, theo dõi phản ứng giá tại các vùng hỗ trợ EMA.")
+    report.append(f"👉 Kết luận: **{conclusion}**")
 
     return "\n".join(report)
 
 def analyze_single_coin_for_scan(coin):
     full_symbol = coin.upper() + "USDT"
-    ticker = get_ticker_24h(full_symbol)
+    ticker, klines_map = fetch_multi_klines_parallel(full_symbol, ALL_TIMEFRAMES)
     if not ticker:
         return None
         
-    tf_1h = analyze_timeframe(get_klines(full_symbol, "1h", 60))
-    tf_4h = analyze_timeframe(get_klines(full_symbol, "4h", 60))
-    
-    if not tf_1h or not tf_4h:
-        return None
-        
-    is_oversold = tf_1h['rsi'] <= 35 or tf_4h['rsi'] <= 35
-    is_overbought = tf_1h['rsi'] >= 70 or tf_4h['rsi'] >= 70
-    is_golden_cross = "GOLDEN" in tf_1h['ema_cross'] or "GOLDEN" in tf_4h['ema_cross']
-
-    if is_oversold or is_golden_cross or is_overbought:
-        return {
-            "coin": coin,
-            "price": ticker['lastPrice'],
-            "change": ticker['priceChangePercent'],
-            "rsi_1h": tf_1h['rsi'],
-            "rsi_4h": tf_4h['rsi'],
-            "trend_4h": tf_4h['ema_trend'],
-            "cross_1h": tf_1h['ema_cross'],
-            "is_oversold": is_oversold,
-            "is_overbought": is_overbought,
-            "is_golden_cross": is_golden_cross
-        }
+    report_text = get_coin_report(coin)
+    if "ĐẠT" in report_text or "A+" in report_text:
+        return report_text
     return None
 
 def scan_market(coins_list=None):
     """
-    Ultra-fast parallel market scanning for top coins!
-    Scan time drops from 5s -> 0.6s!
+    Ultra-Concise Minimal Market Scanner.
+    Formats results using the required concise template!
     """
     if not coins_list:
         coins_list = TOP_COINS
@@ -114,32 +167,18 @@ def scan_market(coins_list=None):
     results = []
     
     with ThreadPoolExecutor(max_workers=10) as executor:
-        scan_futures = [executor.submit(analyze_single_coin_for_scan, coin) for coin in coins_list]
+        scan_futures = [executor.submit(get_coin_report, coin) for coin in coins_list]
         for future in scan_futures:
             res = future.result()
-            if res:
+            if res and ("ĐẠT" in res or "A+" in res):
                 results.append(res)
 
-    # Format Scan Report
     report = []
-    report.append("🔍 **KẾT QUẢ QUÉT THỊ TRƯỜNG (TOP COIN SCANNER)**\n")
+    report.append("🔍 **KẾT QUẢ QUÉT HỆ THỐNG GIAO DỊCH A+ (TOP COINS)**\n")
     
     if not results:
-        report.append("⚪ Hiện tại các coin trong Top đang ở vùng trung tính, chưa có biến động quá bán/quá mua cực đại.")
+        report.append("⚪ Hiện tại các Top Coin đang ở vùng tích lũy, chưa kích hoạt tín hiệu A+.")
         return "\n".join(report)
 
-    for item in results:
-        change_str = f"+{item['change']:.2f}%" if item['change'] >= 0 else f"{item['change']:.2f}%"
-        status_tag = ""
-        if item['is_oversold']:
-            status_tag += " 💎 [QUÁ BÁN - MUA ĐẸP]"
-        if item['is_golden_cross']:
-            status_tag += " 🔥 [GOLDEN CROSS]"
-        if item['is_overbought']:
-            status_tag += " ⚠️ [QUÁ MUA]"
-
-        report.append(f"🪙 **{item['coin']}/USDT**: `{format_price(item['price'])}` ({change_str}){status_tag}")
-        report.append(f"   └ RSI 1h: `{item['rsi_1h']}` | RSI 4h: `{item['rsi_4h']}` | 4h: {item['trend_4h']}")
-        report.append("")
-
+    report.append("\n\n----------------------------\n\n".join(results[:5]))
     return "\n".join(report)
