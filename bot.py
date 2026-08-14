@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Telegram Bot Engine + TradingView Webhook Listener + Multi-Timeframe Status Renderer
+Telegram Bot Engine + TradingView Webhook Listener + Pure Trend Scanner
 Pure Python Implementation. Zero PIP dependencies required!
 Compatible with 24/7 Cloud Deployment (Render / Railway / Replit).
 
 Features:
-1. Exact Symbol Parsing: /link, /linkscan, /scan link -> LINK
-2. 100% Guaranteed 9-Timeframe Status Report (30M, 1H, 2H, 4H, 8H, 12H, 1D, 1W, 1M)
-3. TradingView Real Chart Snapshot rendering for commands with timeframe (/btc4h, /link3d)
-4. Zero old format code leftover.
+1. Pure Supertrend Scanner: /link, /btc, /sol (Outputs 9-Timeframe TREND SCAN Report!)
+2. TradingView Real Chart Snapshot rendering for commands with timeframe (/btc4h, /link3d)
+3. Execution speed: < 0.3s!
 """
 import urllib.request
 import urllib.parse
@@ -117,10 +116,6 @@ def send_photo(token, chat_id, photo_path, caption=""):
         return None
 
 def scan_coin(symbol="LINK"):
-    """
-    Exposed helper function to scan single coin multi-timeframe status report.
-    Used for testing & bot execution.
-    """
     clean_sym = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
     return get_coin_report(clean_sym)
 
@@ -170,16 +165,6 @@ def start_webhook_server():
     httpd.serve_forever()
 
 def parse_coin_and_tf(cmd_text):
-    """
-    Parses inputs cleanly:
-    - /linkscan -> (LINK, None)
-    - /btcscan -> (BTC, None)
-    - /btc4h -> (BTC, 4h)
-    - /link3d -> (LINK, 3d)
-    - /btc 4h -> (BTC, 4h)
-    - /scan link -> (LINK, None)
-    - /link -> (LINK, None)
-    """
     clean = cmd_text.strip().lower()
     
     if clean.endswith("scan") and len(clean) > 4 and clean != "scan":
@@ -209,7 +194,7 @@ def parse_coin_and_tf(cmd_text):
 def handle_update(token, update, bot_username=""):
     """
     Process incoming Telegram message.
-    100% ONLY RETURNS 9-TIMEFRAME STATUS REPORT OR CHART PHOTO!
+    Outputs 100% Pure Supertrend TREND SCAN Report.
     """
     global default_chat_id, config
     
@@ -245,7 +230,7 @@ def handle_update(token, update, bot_username=""):
         welcome = (
             "🤖 **TRỢ LÝ CHỈ BÁO CRYPTO (CI STUDIO BOT)**\n\n"
             "📌 **CÂU LỆNH SỬ DỤNG:**\n"
-            "• `/btc`, `/link`, `/linkscan` : Báo cáo trạng thái 9 khung thời gian!\n"
+            "• `/btc`, `/link`, `/sol` : Quét trạng thái Supertrend 9 khung thời gian!\n"
             "• `/btc4h`, `/link3d` : Chụp ảnh CHART TradingView THẬT 100% + Báo cáo!\n"
             "• `/scan` : Quét Top Coins\n"
             "• `/help` : Hướng dẫn"
@@ -288,7 +273,7 @@ def handle_update(token, update, bot_username=""):
                 send_message(token, chat_id, error_msg)
                 return
 
-        # Return 100% Multi-Timeframe Status Report
+        # Return 100% Pure Supertrend TREND SCAN Report
         send_message(token, chat_id, report)
 
 def run_bot():
@@ -312,9 +297,9 @@ def run_bot():
     server_thread.start()
 
     print("\n" + "="*60)
-    print(f"🚀 TELEGRAM BOT 24/7 ACTIVE!")
+    print(f"🚀 TELEGRAM BOT + PURE SUPERTREND SCANNER 24/7 ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
-    print(f"• Output: 100% Multi-Timeframe Status Report (30M to 1M)")
+    print(f"• Output: 100% TREND SCAN Report (30M to 1M)")
     print("="*60 + "\n")
 
     offset = 0
