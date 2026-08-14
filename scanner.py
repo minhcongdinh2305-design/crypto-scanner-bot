@@ -1,5 +1,5 @@
 from binance_api import validate_binance_symbol, fetch_multi_klines_parallel
-from ta_engine import analyze_4_trends
+from ta_engine import analyze_4_trends, format_price_level
 from concurrent.futures import ThreadPoolExecutor
 
 TOP_COINS = [
@@ -11,8 +11,9 @@ SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
 def get_coin_report(symbol="NEAR"):
     """
-    Validates symbol with Binance REST API first.
-    If invalid or non-existent, immediately returns error message and stops.
+    Detailed Action-Based 4-Trend Scan Report with explicit Current Price header.
+    🪙 {SYMBOL}/USDT (CHI TIẾT 4 TREND)
+    Giá: {current_price}
     """
     symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
     
@@ -27,8 +28,13 @@ def get_coin_report(symbol="NEAR"):
     if not klines_map:
         return f"❌ Không thể lấy dữ liệu từ Binance cho **{symbol_upper}/USDT**."
 
+    curr_price_str = "Chưa xác định"
+    if ticker and "lastPrice" in ticker:
+        curr_price_str = format_price_level(ticker["lastPrice"])
+
     report = []
-    report.append(f"🪙 **{symbol_upper}/USDT** (CHI TIẾT 4 TREND)\n")
+    report.append(f"🪙 **{symbol_upper}/USDT** (CHI TIẾT 4 TREND)")
+    report.append(f"Giá: **{curr_price_str}**\n")
 
     for tf in SCAN_TIMEFRAMES:
         candles = klines_map.get(tf, [])
