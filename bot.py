@@ -5,7 +5,8 @@ Pure Python Implementation. Zero PIP dependencies required!
 Compatible with 24/7 Render / Railway / Replit Web Services.
 
 Destination Chat ID: -1002561812973
-Indicator: Double Supertrend Kivanc EXACT (Fast 10,3.0 & Slow 15,10.0)
+Indicator: Double Supertrend Kivanc EXACT (Fast 10,3.0 & Slow 12,10.0)
+Candles: limit=1000 BTCUSDT 4H Binance Spot REST API
 """
 import urllib.request
 import urllib.parse
@@ -24,7 +25,6 @@ CONFIG_FILE = "config.json"
 WEBHOOK_PORT = int(os.environ.get("PORT", 10000))
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://crypto-scanner-bot-zs2j.onrender.com")
 
-# DEFAULT CHAT ID
 DEFAULT_GROUP_CHAT_ID = "-1002561812973"
 
 # ANTI-SPAM COOLDOWN STATE
@@ -97,7 +97,7 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
-        self.wfile.write(b"<html><body><h1>Double Supertrend Kivanc BTC 4H 24/7/365 Bot is Active!</h1></body></html>")
+        self.wfile.write(b"<html><body><h1>Double Supertrend Kivanc EXACT BTC 4H 24/7/365 Bot is Active!</h1></body></html>")
 
     def log_message(self, format, *args):
         return
@@ -124,8 +124,7 @@ def keep_alive_self_ping():
 def btc_4h_auto_monitor_loop():
     """
     24/7/365 SILENT BACKGROUND AUTO-MONITOR & KEEP-ALIVE FOR BTC 4H.
-    Scans every 1 minute (60s).
-    100% SILENT when price is in normal range.
+    Scans every 60 seconds.
     Destination Chat ID: -1002561812973
     """
     global last_alert_type, last_alert_time, bot_token, default_chat_id
@@ -134,18 +133,18 @@ def btc_4h_auto_monitor_loop():
     
     while True:
         try:
-            time.sleep(60) # Scan every 1 minute
+            time.sleep(60) # Scan every 60 seconds
             
             # Keep-Alive Self Ping
             threading.Thread(target=keep_alive_self_ping, daemon=True).start()
 
-            triggered, signal_type, alert_msg, curr_price, val_blue, val_red = check_btc_4h_signal()
+            triggered, signal_type, alert_msg, curr_price, val1, trend1, val2, trend2 = check_btc_4h_signal()
             
             p_curr = format_price_level(curr_price)
-            p_blue = format_price_level(val_blue)
-            p_red = format_price_level(val_red)
+            p_val1 = format_price_level(val1)
+            p_val2 = format_price_level(val2)
             status_text = signal_type if triggered else "OK (Floating)"
-            print(f"[4H Scan] BTC: {p_curr} | Blue: {p_blue} | Red: {p_red} | Status: {status_text}")
+            print(f"[4H Scan] BTC: {p_curr} | FastST: {p_val1} (T:{trend1}) | SlowST: {p_val2} (T:{trend2}) | Status: {status_text}")
 
             if triggered and alert_msg and bot_token and default_chat_id:
                 now = time.time()
@@ -172,7 +171,7 @@ def handle_update(token, update, bot_username=""):
         
     chat_id = message["chat"]["id"]
     
-    # Save chat_id dynamically if message comes from group/user
+    # Save chat_id dynamically
     if str(chat_id) != str(default_chat_id):
         default_chat_id = chat_id
         config["group_chat_id"] = chat_id
@@ -199,9 +198,9 @@ def handle_update(token, update, bot_username=""):
         if cmd in ["start", "help"]:
             welcome = (
                 "🤖 <b>TRỢ LÝ CẢNH BÁO TỰ ĐỘNG BTC 4H (24/7/365)</b>\n\n"
-                "📌 <b>THÔNG SỐ CHỈ BÁO KIVANC SUPERTREND:</b>\n"
+                "📌 <b>THÔNG SỐ CHỈ BÁO KIVANC SUPERTREND (1000 NẾN BINANCE SPOT):</b>\n"
                 "• Dải Nhanh (🔵/🔴): ATR 10, Multiplier 3.0\n"
-                "• Dải Chậm (🟢/🟡): ATR 15, Multiplier 10.0\n\n"
+                "• Dải Chậm (🟢/🟡): ATR 12, Multiplier 10.0\n\n"
                 "📌 <b>CÂU LỆNH KIỂM TRA:</b>\n"
                 "• <code>/check</code> hoặc <code>/test</code> : Kiểm tra và đối chiếu các mốc giá trực tiếp với TradingView."
             )

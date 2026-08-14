@@ -1,8 +1,11 @@
 """
 100% Exact TradingView Pine Script v4 Supertrend Kivanc Engine
-Fast ST: ATR 10, Multiplier 3.0
-Slow ST: ATR 12, Multiplier 10.0 (Updated from 15 to 12)
-Source: hl2, RMA Wilder's ATR Calculation
+Matches Binance Spot BTCUSDT 4H Chart on TradingView.
+
+RMA Wilder's ATR:
+- Initialized with SMA on candle 'period - 1' (np.mean(tr[:period]))
+- Recursive update: rma[i] = alpha * tr[i] + (1 - alpha) * rma[i-1] where alpha = 1.0 / period
+- Source: src = (high + low) / 2.0
 """
 
 try:
@@ -25,20 +28,30 @@ def format_price_level(val):
         return f"{val:.6f}"
 
 def calculate_rma_python(values, length: int):
-    alpha = 1.0 / float(length)
     n = len(values)
     rma = [0.0] * n
-    if n > 0:
+    alpha = 1.0 / float(length)
+    if n >= length:
+        rma[length - 1] = sum(values[:length]) / float(length)
+        for i in range(length, n):
+            rma[i] = alpha * float(values[i]) + (1.0 - alpha) * rma[i - 1]
+    elif n > 0:
         rma[0] = float(values[0])
         for i in range(1, n):
             rma[i] = alpha * float(values[i]) + (1.0 - alpha) * rma[i - 1]
     return rma
 
 def calculate_kivanc_supertrend_python(candles, period: int, multiplier: float):
-    n = len(candles)
-    highs = [c["high"] for c in candles]
-    lows = [c["low"] for c in candles]
-    closes = [c["close"] for c in candles]
+    if isinstance(candles, list):
+        highs = [float(c["high"]) for c in candles]
+        lows = [float(c["low"]) for c in candles]
+        closes = [float(c["close"]) for c in candles]
+    else:
+        highs = candles['high'].tolist()
+        lows = candles['low'].tolist()
+        closes = candles['close'].tolist()
+
+    n = len(closes)
     src = [(highs[i] + lows[i]) / 2.0 for i in range(n)]
 
     tr = [highs[0] - lows[0]]
@@ -77,12 +90,18 @@ def calculate_kivanc_supertrend_python(candles, period: int, multiplier: float):
 
 if HAS_NUMPY_PANDAS:
     def calculate_rma(series: pd.Series, length: int) -> np.ndarray:
-        alpha = 1.0 / length
+        alpha = 1.0 / float(length)
         values = series.to_numpy()
-        rma = np.zeros(len(values))
-        rma[0] = values[0]
-        for i in range(1, len(values)):
-            rma[i] = alpha * values[i] + (1.0 - alpha) * rma[i - 1]
+        n = len(values)
+        rma = np.zeros(n)
+        if n >= length:
+            rma[length - 1] = np.mean(values[:length])
+            for i in range(length, n):
+                rma[i] = alpha * values[i] + (1.0 - alpha) * rma[i - 1]
+        elif n > 0:
+            rma[0] = values[0]
+            for i in range(1, n):
+                rma[i] = alpha * values[i] + (1.0 - alpha) * rma[i - 1]
         return rma
 
     def calculate_kivanc_supertrend(df, period: int, multiplier: float):
@@ -93,23 +112,24 @@ if HAS_NUMPY_PANDAS:
         low = df['low'].to_numpy()
         close = df['close'].to_numpy()
         src = (high + low) / 2.0
+        n = len(df)
         
-        tr = np.zeros(len(df))
+        tr = np.zeros(n)
         tr[0] = high[0] - low[0]
-        for i in range(1, len(df)):
+        for i in range(1, n):
             tr[i] = max(high[i] - low[i], abs(high[i] - close[i - 1]), abs(low[i] - close[i - 1]))
         
         atr = calculate_rma(pd.Series(tr), period)
         
-        up = np.zeros(len(df))
-        dn = np.zeros(len(df))
-        trend = np.zeros(len(df), dtype=int)
+        up = np.zeros(n)
+        dn = np.zeros(n)
+        trend = np.zeros(n, dtype=int)
         
         up[0] = src[0] - multiplier * atr[0]
         dn[0] = src[0] + multiplier * atr[0]
         trend[0] = 1
         
-        for i in range(1, len(df)):
+        for i in range(1, n):
             up_basic = src[i] - multiplier * atr[i]
             dn_basic = src[i] + multiplier * atr[i]
             
@@ -142,13 +162,12 @@ def analyze_4_trends(candles):
     if not candles or len(candles) < 15:
         return None, None, None, None
 
-    # Fast ST (10, 3.0) & Slow ST (12, 10.0)
-    up_fast, dn_fast, trend_fast = calculate_supertrend(candles, period=10, multiplier=3.0)
-    up_slow, dn_slow, trend_slow = calculate_supertrend(candles, period=12, multiplier=10.0)
+    trend_fast, val_fast, up_fast, dn_fast, _ = calculate_kivanc_supertrend(candles, period=10, multiplier=3.0)
+    trend_slow, val_slow, up_slow, dn_slow, _ = calculate_kivanc_supertrend(candles, period=12, multiplier=10.0)
     
-    val_blue = up_fast[-1] if up_fast else 0
-    val_red = dn_fast[-1] if dn_fast else 0
-    val_green = up_slow[-1] if up_slow else 0
-    val_yellow = dn_slow[-1] if dn_slow else 0
+    val_blue = up_fast[-1]
+    val_red = dn_fast[-1]
+    val_green = up_slow[-1]
+    val_yellow = dn_slow[-1]
 
     return val_blue, val_green, val_red, val_yellow

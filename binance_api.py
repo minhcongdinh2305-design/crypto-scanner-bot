@@ -1,6 +1,11 @@
 import urllib.request
 import json
-import time
+
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
 
 BINANCE_ENDPOINTS = [
     "https://api.binance.com/api/v3",        # Binance Spot API (Primary)
@@ -51,9 +56,10 @@ def get_ticker_24h(symbol="BTC"):
             
     return None
 
-def get_klines(symbol="BTC", interval="4h", limit=500):
+def get_klines_df(symbol="BTC", interval="4h", limit=1000):
     """
-    Fetches 500 REAL OHLCV candles from Binance to ensure 100% exact Wilder's RMA ATR accumulation.
+    Fetches 1000 REAL OHLCV candles from Binance Spot API (https://api.binance.com/api/v3/klines).
+    Normalizes columns: timestamp, open, high, low, close, volume (floats).
     """
     full_symbol = normalize_symbol(symbol)
     clean_tf = interval.lower().strip()
@@ -68,20 +74,28 @@ def get_klines(symbol="BTC", interval="4h", limit=500):
     path = f"klines?symbol={full_symbol}&interval={safe_interval}&limit={limit}"
     data = fetch_json_with_fallback(path)
 
-    if data and isinstance(data, list):
-        candles = []
-        try:
-            for item in data:
-                candles.append({
-                    "timestamp": item[0],
-                    "open": float(item[1]),
-                    "high": float(item[2]),
-                    "low": float(item[3]),
-                    "close": float(item[4]),
-                    "volume": float(item[5])
-                })
-            return candles
-        except Exception:
-            return []
+    if data and isinstance(data, list) and len(data) > 0:
+        records = []
+        for item in data:
+            records.append({
+                "timestamp": int(item[0]),
+                "open": float(item[1]),
+                "high": float(item[2]),
+                "low": float(item[3]),
+                "close": float(item[4]),
+                "volume": float(item[5])
+            })
+        if HAS_PANDAS:
+            return pd.DataFrame(records)
+        else:
+            return records
 
+    return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"]) if HAS_PANDAS else []
+
+def get_klines(symbol="BTC", interval="4h", limit=1000):
+    df = get_klines_df(symbol, interval, limit)
+    if isinstance(df, list):
+        return df
+    elif HAS_PANDAS and not df.empty:
+        return df.to_dict('records')
     return []
