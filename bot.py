@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 """
-Telegram Bot Engine + TradingView Webhook Listener + Real TradingView Snapshot Renderer
+Telegram Bot Engine + TradingView Webhook Listener + Multi-Timeframe Status Report
 Pure Python Implementation with zero extra dependencies required.
 Compatible with 24/7 Cloud Deployment (Render / Railway / Replit).
 
 Features:
-1. Symbol Normalizer (BTC / BTCUSDT / BTC/USDT -> BTCUSDT)
-2. Real TradingView Snapshot Engine: /btc4h, /link3d, /eth1d (Captures 100% Real TradingView Dark Theme Chart!)
-3. Explicit Traceback Reporting to Telegram if snapshot creation or sending fails.
-4. /scan : Multi-Coin Watchlist Scanner & Ranking
-5. TradingView Webhook Listener (Port 8080)
-6. Auto Cleanup temporary PNG files after sending.
+1. Multi-Timeframe Status Report (30M, 1H, 2H, 4H, 8H, 12H, 1D, 1W, 1M)
+2. Commands: /btc, /link, /linkscan, /scan link, /btc4h (TradingView chart photo)
+3. Direct single-message clean responses.
 """
 import urllib.request
 import urllib.parse
@@ -174,6 +171,7 @@ def start_webhook_server():
 def parse_coin_and_tf(cmd_text):
     """
     Parses inputs like:
+    - linkscan -> (LINK, None)
     - btc4h -> (BTC, 4h)
     - link3d -> (LINK, 3d)
     - eth1d -> (ETH, 1d)
@@ -182,6 +180,10 @@ def parse_coin_and_tf(cmd_text):
     """
     clean = cmd_text.strip().lower()
     
+    if clean.endswith("scan") and len(clean) > 4:
+        sym = clean[:-4].upper()
+        return sym, None
+
     m = re.match(r"^([a-z0-9]+?)(15m|30m|1h|2h|4h|8h|12h|1d|2d|3d|1w)$", clean)
     if m:
         return m.group(1).upper(), m.group(2)
@@ -200,7 +202,7 @@ def parse_coin_and_tf(cmd_text):
 def handle_update(token, update, bot_username=""):
     """
     Process incoming Telegram message.
-    Captures 100% Real TradingView Chart Snapshots for commands with timeframe!
+    Outputs Multi-Timeframe Status Report or Chart Photo.
     """
     global default_chat_id, config
     
@@ -236,7 +238,7 @@ def handle_update(token, update, bot_username=""):
         welcome = (
             "🤖 **TRỢ LÝ CHỈ BÁO CRYPTO (CI STUDIO BOT)**\n\n"
             "📌 **CÂU LỆNH SỬ DỤNG:**\n"
-            "• `/btc`, `/link` : Xem chỉ báo dạng text\n"
+            "• `/btc`, `/link`, `/linkscan` : Báo cáo trạng thái 9 khung thời gian!\n"
             "• `/btc4h`, `/link3d`, `/eth1d` : Chụp ảnh CHART TradingView THẬT 100% + Báo cáo!\n"
             "• `/scan` : Quét Watchlist mặc định\n"
             "• `/scan BTC ETH SOL SUI PEPE` : Quét Watchlist tùy chỉnh\n"
@@ -246,6 +248,13 @@ def handle_update(token, update, bot_username=""):
         return
 
     if cmd == "scan":
+        if len(parts) > 1 and parts[1].lower() not in ["btc", "eth", "sol", "link", "bnb"]:
+            # Handle /scan link
+            symbol = parts[1].upper()
+            report = get_coin_report(symbol)
+            send_message(token, chat_id, report)
+            return
+
         custom_coins = parts[1:] if len(parts) > 1 else None
         report = scan_market(custom_coins)
         send_message(token, chat_id, report)
@@ -256,19 +265,17 @@ def handle_update(token, update, bot_username=""):
     if symbol:
         report = get_coin_report(symbol)
         
-        # If timeframe requested (e.g. /btc4h or /link3d), capture 100% Real TradingView Chart Snapshot!
+        # If timeframe requested (e.g. /btc4h or /link3d), capture TradingView Chart Snapshot!
         if timeframe:
             try:
                 photo_path = generate_chart_image(symbol, timeframe)
-                
                 if photo_path and os.path.exists(photo_path):
                     res = send_photo(token, chat_id, photo_path, report)
                     cleanup_chart_image(photo_path)
-                    
                     if res and res.get("ok"):
                         return
                     else:
-                        err_desc = res.get("description", "Không xác định") if res else "Telegram API Response Timeout"
+                        err_desc = res.get("description", "Không xác định") if res else "Telegram API Timeout"
                         send_message(token, chat_id, f"❌ LỖI GỬI ẢNH TELEGRAM:\n{err_desc}")
                         return
                 else:
@@ -279,7 +286,7 @@ def handle_update(token, update, bot_username=""):
                 send_message(token, chat_id, error_msg)
                 return
 
-        # Fallback to text-only report if no timeframe specified (e.g. /btc)
+        # Return Multi-Timeframe Status Report
         send_message(token, chat_id, report)
 
 def run_bot():
@@ -303,9 +310,9 @@ def run_bot():
     server_thread.start()
 
     print("\n" + "="*60)
-    print(f"🚀 TELEGRAM BOT + REAL TRADINGVIEW SNAPSHOT 24/7 ACTIVE!")
+    print(f"🚀 TELEGRAM BOT + MULTI-TIMEFRAME SCANNER 24/7 ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
-    print(f"• Commands: /btc4h, /link3d, /eth1d (Captures Real 100% TradingView Chart!)")
+    print(f"• Commands: /linkscan, /scan link, /link (Outputs 9-Timeframe Status Report!)")
     print("="*60 + "\n")
 
     offset = 0
