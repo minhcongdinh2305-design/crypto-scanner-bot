@@ -1,5 +1,5 @@
 from binance_api import get_ticker_24h, fetch_multi_klines_parallel
-from ta_engine import get_4trend_status
+from ta_engine import get_kivanc_4trend_status
 from concurrent.futures import ThreadPoolExecutor
 
 TOP_COINS = [
@@ -11,7 +11,7 @@ SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
 def get_coin_report(symbol="BTC"):
     """
-    4-Trend Line Scan Report (XANH, TÍM, ĐỎ, CAM) across 9 timeframes.
+    Kıvanç Özbilgiç 4-Trend Line Scan Report (XANH, TÍM, ĐỎ, CAM) across 9 timeframes.
     ▫️ {TF}: {Trạng thái 4 đường}
     """
     symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
@@ -27,10 +27,10 @@ def get_coin_report(symbol="BTC"):
 
     for tf in SCAN_TIMEFRAMES:
         candles = klines_map.get(tf, [])
-        trend_st = get_4trend_status(candles)
+        trend_st = get_kivanc_4trend_status(candles)
         tf_label = tf.upper()
         
-        # Alignment space for 1H, 2H, 4H, 8H, 1D, 1W, 1M
+        # Space alignment for 1H, 2H, 4H, 8H, 1D, 1W, 1M
         if len(tf_label) == 2:
             tf_display = f"{tf_label} "
         else:
@@ -44,9 +44,6 @@ def analyze_single_coin_for_scan(coin):
     return get_coin_report(coin)
 
 def scan_market(coins_list=None):
-    """
-    Market Watchlist Scanner using 4-Trend Scan.
-    """
     if not coins_list or len(coins_list) == 0:
         coins_list = TOP_COINS
 
