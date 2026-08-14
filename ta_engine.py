@@ -1,137 +1,94 @@
 """
-Mandatory 4-Line SuperTrend Engine (🔵 Blue, 🟢 Green, 🔴 Red, 🟡 Yellow)
-Extracts ALL 4 LINES at EVERY SINGLE TIMEFRAME:
-- 🔵 Blue Line   : Fast ST Support (ATR 10, Mult 3.0 UP band)
-- 🟢 Green Line  : Slow ST Support (ATR 15, Mult 10.0 UP band)
-- 🔴 Red Line    : Fast ST Resistance (ATR 10, Mult 3.0 DN band)
-- 🟡 Yellow Line : Slow ST Resistance (ATR 15, Mult 10.0 DN band)
-
-Format per timeframe:
-▫️ {TIMEFRAME}: Trên 🔵 (+X%), Trên 🟢 (+X%) | Dưới 🔴 (-X%), Dưới 🟡 (-X%)
+100% User Exact Math SuperTrend Engine (Pure Python - Zero External PIP Dependencies Required)
 """
 
-def calculate_kivanc_supertrend_full(candles, period=10, multiplier=3.0):
-    """
-    Returns full arrays for UP, DN, and flat counts for Kıvanç Özbilgiç SuperTrend.
-    """
+def calculate_supertrend(candles, period=10, multiplier=3.0):
     if not candles or len(candles) < period + 5:
-        return None
+        return None, None, None
 
     n = len(candles)
     highs = [c["high"] for c in candles]
     lows = [c["low"] for c in candles]
     closes = [c["close"] for c in candles]
 
+    hl2 = [(highs[i] + lows[i]) / 2.0 for i in range(n)]
+    
     tr = [highs[0] - lows[0]]
     for i in range(1, n):
         tr_val = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
         tr.append(tr_val)
 
+    # Rolling mean ATR
     atr = [0.0] * n
-    atr[period - 1] = sum(tr[:period]) / period
-    for i in range(period, n):
-        atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period
+    for i in range(period - 1, n):
+        atr[i] = sum(tr[i - period + 1 : i + 1]) / period
 
-    src = [(highs[i] + lows[i]) / 2.0 for i in range(n)]
-    basic_up = [src[i] - (multiplier * atr[i]) for i in range(n)]
-    basic_dn = [src[i] + (multiplier * atr[i]) for i in range(n)]
+    up = [hl2[i] - (multiplier * atr[i]) for i in range(n)]
+    dn = [hl2[i] + (multiplier * atr[i]) for i in range(n)]
 
-    up = [0.0] * n
-    dn = [0.0] * n
+    upperband = list(dn)
+    lowerband = list(up)
+    trend = [1] * n
 
     for i in range(1, n):
-        if closes[i - 1] > up[i - 1]:
-            up[i] = max(basic_up[i], up[i - 1])
+        if closes[i-1] > upperband[i-1]:
+            upperband[i] = max(dn[i], upperband[i-1]) if closes[i] > upperband[i-1] else dn[i]
         else:
-            up[i] = basic_up[i]
+            upperband[i] = min(dn[i], upperband[i-1]) if closes[i] < upperband[i-1] else dn[i]
 
-        if closes[i - 1] < dn[i - 1]:
-            dn[i] = min(basic_dn[i], dn[i - 1])
+        if closes[i-1] < lowerband[i-1]:
+            lowerband[i] = min(up[i], lowerband[i-1]) if closes[i] < lowerband[i-1] else up[i]
         else:
-            dn[i] = basic_dn[i]
+            lowerband[i] = max(up[i], lowerband[i-1]) if closes[i] > lowerband[i-1] else up[i]
 
-    # Calculate flat durations
-    up_flat_count = 1
-    for idx in range(2, min(20, n)):
-        if abs(up[-1] - up[-idx]) / (up[-1] + 1e-9) < 0.0005:
-            up_flat_count += 1
+        if closes[i] > upperband[i-1]:
+            trend[i] = 1
+        elif closes[i] < lowerband[i-1]:
+            trend[i] = -1
         else:
-            break
+            trend[i] = trend[i-1]
+            if trend[i] == 1 and lowerband[i] < lowerband[i-1]:
+                lowerband[i] = lowerband[i-1]
+            if trend[i] == -1 and upperband[i] > upperband[i-1]:
+                upperband[i] = upperband[i-1]
 
-    dn_flat_count = 1
-    for idx in range(2, min(20, n)):
-        if abs(dn[-1] - dn[-idx]) / (dn[-1] + 1e-9) < 0.0005:
-            dn_flat_count += 1
-        else:
-            break
+    return lowerband, upperband, trend
 
-    return {
-        "up": round(up[-1], 4),
-        "dn": round(dn[-1], 4),
-        "up_flat_long": (up_flat_count >= 10),
-        "dn_flat_long": (dn_flat_count >= 10)
-    }
-
-def format_line_status(close, line_val, color_icon, is_support, is_flat_long):
-    """
-    Formats a single line status:
-    - Support:  Trên 🔵 (+X.X%) or Chạm 🔵 (0.0%) or Dưới 🔵 (-X.X%)
-    - Resistance: Dưới 🔴 (-X.X%) or Chạm 🔴 (0.0%) or Trên 🔴 (+X.X%)
-    Adds 'dài' if is_flat_long == True.
-    """
-    flat_label = " dài" if is_flat_long else ""
+def analyze_4_trends(df):
+    if df is None or len(df) < 30:
+        return "Thiếu dữ liệu nến"
+        
+    if isinstance(df, list):
+        candles = df
+    else:
+        # Convert DataFrame to list of dicts
+        candles = df.to_dict('records')
+        
+    current_close = candles[-1]["close"]
     
-    if is_support:
-        diff_pct = ((close - line_val) / close) * 100.0
-        abs_diff = abs(diff_pct)
-        if abs_diff <= 0.3 and is_flat_long:
-            return f"Chạm {color_icon}{flat_label} (0.0%)"
-        elif abs_diff <= 0.3:
-            return f"Sắp chạm {color_icon} (+{abs_diff:.1f}%)"
-        elif diff_pct >= 0:
-            return f"Trên {color_icon}{flat_label} (+{diff_pct:.1f}%)"
-        else:
-            return f"Dưới {color_icon}{flat_label} (-{abs_diff:.1f}%)"
-    else: # Resistance
-        diff_pct = ((line_val - close) / close) * 100.0
-        abs_diff = abs(diff_pct)
-        if abs_diff <= 0.3 and is_flat_long:
-            return f"Chạm {color_icon}{flat_label} (0.0%)"
-        elif abs_diff <= 0.3:
-            return f"Sắp chạm {color_icon} (-{abs_diff:.1f}%)"
-        elif diff_pct >= 0:
-            return f"Dưới {color_icon}{flat_label} (-{diff_pct:.1f}%)"
-        else:
-            return f"Trên {color_icon}{flat_label} (+{abs_diff:.1f}%)"
+    # 1. Supertrend Nhanh (Blue / Red): ATR 10, Multiplier 3
+    low_fast, up_fast, trend_fast = calculate_supertrend(candles, period=10, multiplier=3.0)
+    # 2. Supertrend Chậm (Green / Yellow): ATR 15, Multiplier 10
+    low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0)
+    
+    if not low_fast or not low_slow:
+        return "Thiếu dữ liệu nến"
 
-def get_mandatory_4trend_status(candles):
-    """
-    Mandatory extraction of ALL 4 LINES at EVERY single timeframe:
-    ▫️ {TF}: Trên 🔵 (+X%), Trên 🟢 (+X%) | Dưới 🔴 (-X%), Dưới 🟡 (-X%)
-    """
-    if not candles or len(candles) < 20:
-        return "Trên 🔵 (+0.5%), Trên 🟢 (+1.2%) | Dưới 🔴 (-0.8%), Dưới 🟡 (-2.5%)"
-
-    curr_close = candles[-1]["close"]
-
-    # Fast SuperTrend (10, 3.0) -> 🔵 Blue (Support / UP) & 🔴 Red (Resistance / DN)
-    fast_st = calculate_kivanc_supertrend_full(candles, period=10, multiplier=3.0)
-
-    # Slow SuperTrend (15, 10.0) -> 🟢 Green (Support / UP) & 🟡 Yellow (Resistance / DN)
-    slow_st = calculate_kivanc_supertrend_full(candles, period=15, multiplier=10.0)
-
-    if not fast_st or not slow_st:
-        return "Trên 🔵 (+0.5%), Trên 🟢 (+1.2%) | Dưới 🔴 (-0.8%), Dưới 🟡 (-2.5%)"
-
-    # 1. Support Lines (🔵 Blue & 🟢 Green)
-    blue_str = format_line_status(curr_close, fast_st["up"], "🔵", is_support=True, is_flat_long=fast_st["up_flat_long"])
-    green_str = format_line_status(curr_close, slow_st["up"], "🟢", is_support=True, is_flat_long=slow_st["up_flat_long"])
-
-    # 2. Resistance Lines (🔴 Red & 🟡 Yellow)
-    red_str = format_line_status(curr_close, fast_st["dn"], "🔴", is_support=False, is_flat_long=fast_st["dn_flat_long"])
-    yellow_str = format_line_status(curr_close, slow_st["dn"], "🟡", is_support=False, is_flat_long=slow_st["dn_flat_long"])
-
-    return f"{blue_str}, {green_str} | {red_str}, {yellow_str}"
+    # Lấy giá trị gần nhất
+    val_blue = low_fast[-1]
+    val_red = up_fast[-1]
+    val_green = low_slow[-1]
+    val_yellow = up_slow[-1]
+    
+    # Tính % khoảng cách
+    diff_blue = ((current_close - val_blue) / current_close) * 100
+    diff_green = ((current_close - val_green) / current_close) * 100
+    diff_red = ((val_red - current_close) / current_close) * 100
+    diff_yellow = ((val_yellow - current_close) / current_close) * 100
+    
+    # Format văn bản kèm icon và số %
+    res = f"Trên 🔵 (+{diff_blue:.1f}%), Trên 🟢 (+{diff_green:.1f}%) | Dưới 🔴 (-{diff_red:.1f}%), Dưới 🟡 (-{diff_yellow:.1f}%)"
+    return res
 
 def analyze_timeframe(candles):
-    return get_mandatory_4trend_status(candles)
+    return analyze_4_trends(candles)

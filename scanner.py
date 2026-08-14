@@ -1,5 +1,5 @@
 from binance_api import get_ticker_24h, fetch_multi_klines_parallel
-from ta_engine import get_mandatory_4trend_status
+from ta_engine import analyze_4_trends
 from concurrent.futures import ThreadPoolExecutor
 
 TOP_COINS = [
@@ -11,8 +11,8 @@ SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
 def get_coin_report(symbol="NEAR"):
     """
-    Mandatory 4-Line SuperTrend Scan Report (🔵 Blue, 🟢 Green | 🔴 Red, 🟡 Yellow) across 9 timeframes.
-    ▫️ {TF}: Trên 🔵 (+X%), Trên 🟢 (+X%) | Dưới 🔴 (-X%), Dưới 🟡 (-X%)
+    Standardized 4-Trend Scan Report (🔵 Blue, 🟢 Green | 🔴 Red, 🟡 Yellow) across 9 timeframes.
+    ▫️ {TF}: Trên 🔵 (+X.X%), Trên 🟢 (+X.X%) | Dưới 🔴 (-X.X%), Dưới 🟡 (-X.X%)
     """
     symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
     full_symbol = symbol_upper + "USDT"
@@ -27,7 +27,7 @@ def get_coin_report(symbol="NEAR"):
 
     for tf in SCAN_TIMEFRAMES:
         candles = klines_map.get(tf, [])
-        trend_st = get_mandatory_4trend_status(candles)
+        trend_st = analyze_4_trends(candles)
         tf_label = tf.upper()
         
         # Alignment space for 1H, 2H, 4H, 8H, 1D, 1W, 1M
