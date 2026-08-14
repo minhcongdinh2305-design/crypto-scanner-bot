@@ -1,6 +1,7 @@
 from binance_api import get_ticker_24h, fetch_multi_klines_parallel
 from ta_engine import analyze_4_trends
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 TOP_COINS = [
     "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", 
@@ -11,13 +12,13 @@ SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
 def get_coin_report(symbol="NEAR"):
     """
-    Standardized 4-Trend Scan Report (🔵 Blue, 🟢 Green | 🔴 Red, 🟡 Yellow) across 9 timeframes.
-    ▫️ {TF}: Trên 🔵 (+X.X%), Trên 🟢 (+X.X%) | Dưới 🔴 (-X.X%), Dưới 🟡 (-X.X%)
+    Sub-Second Multi-Threaded 4-Trend Scan Report (limit=100 candles, 9 workers).
     """
     symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
     full_symbol = symbol_upper + "USDT"
     
-    ticker, klines_map = fetch_multi_klines_parallel(full_symbol, SCAN_TIMEFRAMES)
+    # Concurrent multi-threaded fetch of all 9 timeframes at limit=100 candles
+    ticker, klines_map = fetch_multi_klines_parallel(full_symbol, SCAN_TIMEFRAMES, limit=100)
 
     if not ticker:
         return f"❌ Không tìm thấy dữ liệu cho **{symbol_upper}/USDT**!"
