@@ -17,24 +17,21 @@ def render_chart_quickchart(symbol, interval, candles):
     Guarantees 100% PNG image rendering on ANY cloud hosting provider (Render, Railway, Heroku)
     WITHOUT requiring matplotlib or C libraries!
     """
-    if not candles or len(candles) < 15:
+    if not candles or len(candles) < 5:
         return None
 
     symbol_upper = symbol.upper().replace("USDT", "")
     candles_subset = candles[-60:] # 60 candles for crisp mobile display
     
     close_prices = [c["close"] for c in candles_subset]
-    timestamps = [c.get("timestamp", i) for i, c in enumerate(candles_subset)]
     
     # Calculate EMA 20 & EMA 50
     ema20 = calculate_ema(close_prices, 20)
     ema50 = calculate_ema(close_prices, 50)
     
-    # Align EMA arrays
     ema20_aligned = [None] * (len(close_prices) - len(ema20)) + [round(v, 2) for v in ema20]
     ema50_aligned = [None] * (len(close_prices) - len(ema50)) + [round(v, 2) for v in ema50]
 
-    # Chart.js Config for QuickChart
     labels = [f"#{i+1}" for i in range(len(candles_subset))]
     
     chart_config = {
@@ -91,9 +88,8 @@ def render_chart_quickchart(symbol, interval, candles):
         }
     }
 
-    # Build QuickChart POST Payload
     post_data = json.dumps({
-        "backgroundColor": "#131722", # TradingView Dark Theme Background
+        "backgroundColor": "#131722",
         "width": 800,
         "height": 450,
         "devicePixelRatio": 2.0,
@@ -126,13 +122,12 @@ def generate_chart_image(symbol, interval, candles):
     Engine 1: Native Matplotlib (if installed)
     Engine 2: QuickChart API Fallback (Zero Dependency, 100% Guaranteed Image Output!)
     """
-    if not candles or len(candles) < 15:
-        raise ValueError(f"Dữ liệu nến quá ngắn ({len(candles) if candles else 0} nến). Cần tối thiểu 15 nến!")
+    if not candles or len(candles) < 5:
+        raise ValueError(f"Dữ liệu nến quá ngắn ({len(candles) if candles else 0} nến). Cần tối thiểu 5 nến!")
 
     symbol_upper = symbol.upper().replace("USDT", "")
     output_filename = f"chart_{symbol_upper}_{interval.lower()}.png"
 
-    # Try Engine 1: Native Matplotlib
     try:
         import matplotlib
         matplotlib.use('Agg')
@@ -234,7 +229,6 @@ def generate_chart_image(symbol, interval, candles):
     except Exception as e_mat:
         print(f"⚠️ Matplotlib engine unavailable ({e_mat}). Switching to QuickChart API fallback...")
 
-    # Engine 2 Fallback: QuickChart API (Zero Dependencies Required!)
     fallback_res = render_chart_quickchart(symbol, interval, candles)
     if fallback_res:
         return fallback_res

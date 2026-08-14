@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 # Dual Endpoints for 100% Global Cloud Compatibility (Spot & Futures)
 BINANCE_ENDPOINTS = [
-    "https://fapi.binance.com/fapi/v1",      # Binance Futures (Accessible from all Cloud IP ranges including US)
+    "https://fapi.binance.com/fapi/v1",      # Binance Futures
     "https://api.binance.com/api/v3",        # Binance Spot
     "https://data-api.binance.vision/api/v3" # Binance Public Data API
 ]
@@ -44,7 +44,6 @@ def get_ticker_24h(symbol="BTCUSDT"):
     if not symbol.endswith("USDT") and not symbol.endswith("BTC"):
         symbol += "USDT"
     
-    # Try 24hr ticker path
     path = f"ticker/24hr?symbol={symbol}"
     data = fetch_json_with_fallback(path)
     
@@ -53,7 +52,6 @@ def get_ticker_24h(symbol="BTCUSDT"):
         return None
         
     try:
-        # Handle dict or list return
         ticker_data = data[0] if isinstance(data, list) else data
         return {
             "symbol": ticker_data["symbol"],
@@ -70,22 +68,29 @@ def get_ticker_24h(symbol="BTCUSDT"):
 def get_klines(symbol="BTCUSDT", interval="1h", limit=200):
     """
     Fetches OHLCV candlestick data (150-200 candles minimum for EMA 200 & ATR 15).
-    Supported intervals: 15m, 30m, 1h, 2h, 4h, 8h, 12h, 1d, 1w
+    Supported intervals: 15m, 30m, 1h, 2h, 4h, 8h, 12h, 1d, 3d, 1w
     """
     symbol = symbol.upper().replace("/", "").replace("-", "")
     if not symbol.endswith("USDT") and not symbol.endswith("BTC"):
         symbol += "USDT"
 
-    # Map intervals safely if needed
+    # Fully supported interval map including 3d and 1w
     interval_map = {
         "15m": "15m", "30m": "30m", "1h": "1h", "2h": "2h",
-        "4h": "4h", "8h": "8h", "12h": "12h", "1d": "1d", "1w": "1w"
+        "4h": "4h", "6h": "6h", "8h": "8h", "12h": "12h", 
+        "1d": "1d", "3d": "3d", "1w": "1w"
     }
-    safe_interval = interval_map.get(interval.lower(), "1h")
+    safe_interval = interval_map.get(interval.lower(), "1d")
 
     path = f"klines?symbol={symbol}&interval={safe_interval}&limit={limit}"
     data = fetch_json_with_fallback(path)
     
+    # Fallback to 1d if timeframe returned empty (e.g. 3d fallback)
+    if not data or not isinstance(data, list):
+        print(f"⚠️ Primary interval {safe_interval} returned empty for {symbol}. Falling back to 1d...")
+        path_fallback = f"klines?symbol={symbol}&interval=1d&limit={limit}"
+        data = fetch_json_with_fallback(path_fallback)
+        
     if not data or not isinstance(data, list):
         print(f"❌ Failed to fetch klines for {symbol} ({safe_interval})")
         return []
