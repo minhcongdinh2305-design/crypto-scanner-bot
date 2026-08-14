@@ -1,16 +1,17 @@
 """
-Action-Based 4-Trend SuperTrend Engine with Explicit Prices & Negative Value Shield
-Formats:
-- 🔵 Support Near : Trên 🔵 1.580 (+1.2%) / Sắp chạm 🔵 1.580 (+0.3%)
-- 🟢 Support Far  : Trên 🟢 1.450 (+9.5%)
-- 🔴 Resistance Near : Dưới 🔴 1.630 (-1.5%) / Sắp chạm 🔴 1.630 (-0.2%)
-- 🟡 Resistance Far  : Dưới 🟡 1.800 (-12.0%)
-Shields against negative price values on 1W/1M by returning 'Chưa xác định'.
+Dynamic Column Padding 4-Trend Line Engine (🔴 🟡 🔵 🟢)
+Formats 4 perfectly aligned monospace columns:
+Position words (max 4 chars):
+- TRÊN
+- DƯỚI
+- CHẠM
+- K.XĐ
+Format per block: f"{color_icon} {pos:<4} {price:<7} ({diff:.1f}%)"
 """
 
 def format_price_level(val):
     if val <= 0:
-        return None
+        return "-------"
     if val >= 1000:
         return f"{val:.1f}"
     elif val >= 1:
@@ -71,36 +72,54 @@ def calculate_supertrend(candles, period=10, multiplier=3.0):
 
     return lowerband, upperband, trend
 
-def format_single_line_status(close, line_val, color_icon, is_support):
-    if line_val <= 0:
-        return f"{color_icon} Chưa xác định"
+def format_color_block(close, line_val, color_icon, is_support):
+    """
+    Formats a single color block with exact padding width:
+    col = f"{color_icon} {pos:<4} {price:<7} ({sign}{diff:.1f}%)"
+    """
+    if line_val is None or line_val <= 0:
+        return f"{color_icon} K.XĐ  ------- (---)"
 
     price_str = format_price_level(line_val)
-    if not price_str:
-        return f"{color_icon} Chưa xác định"
 
     if is_support:
         diff_pct = ((close - line_val) / close) * 100.0
         abs_diff = abs(diff_pct)
         if 0.0 <= abs_diff <= 0.5:
-            return f"Sắp chạm {color_icon} {price_str} (+{abs_diff:.1f}%)"
+            pos_str = "CHẠM"
         elif diff_pct > 0.5:
-            return f"Trên {color_icon} {price_str} (+{diff_pct:.1f}%)"
+            pos_str = "TRÊN"
         else:
-            return f"Dưới {color_icon} {price_str} (-{abs_diff:.1f}%)"
+            pos_str = "DƯỚI"
+            
+        sign_str = "+" if diff_pct >= 0 else "-"
+        diff_val_str = f"{sign_str}{abs_diff:.1f}%"
     else: # Resistance
         diff_pct = ((line_val - close) / close) * 100.0
         abs_diff = abs(diff_pct)
         if 0.0 <= abs_diff <= 0.5:
-            return f"Sắp chạm {color_icon} {price_str} (-{abs_diff:.1f}%)"
+            pos_str = "CHẠM"
         elif diff_pct > 0.5:
-            return f"Dưới {color_icon} {price_str} (-{diff_pct:.1f}%)"
+            pos_str = "DƯỚI"
         else:
-            return f"Trên {color_icon} {price_str} (+{abs_diff:.1f}%)"
+            pos_str = "TRÊN"
+            
+        sign_str = "-" if diff_pct >= 0 else "+"
+        diff_val_str = f"{sign_str}{abs_diff:.1f}%"
+
+    return f"{color_icon} {pos_str:<4} {price_str:<7} ({diff_val_str})"
 
 def analyze_4_trends(candles):
+    """
+    Returns 4 aligned color block strings:
+    col_blue, col_green, col_red, col_yellow
+    """
     if not candles or len(candles) < 15:
-        return "Chưa đủ dữ liệu nến"
+        null_block_blue = format_color_block(0, 0, "🔵", True)
+        null_block_green = format_color_block(0, 0, "🟢", True)
+        null_block_red = format_color_block(0, 0, "🔴", False)
+        null_block_yellow = format_color_block(0, 0, "🟡", False)
+        return null_block_blue, null_block_green, null_block_red, null_block_yellow
 
     current_close = candles[-1]["close"]
     
@@ -109,21 +128,17 @@ def analyze_4_trends(candles):
     # 2. Supertrend Chậm (Green / Yellow): ATR 15, Multiplier 10
     low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0)
     
-    if not low_fast or not low_slow or not up_fast or not up_slow:
-        return "Chưa đủ dữ liệu nến"
+    val_blue = low_fast[-1] if low_fast else 0
+    val_red = up_fast[-1] if up_fast else 0
+    val_green = low_slow[-1] if low_slow else 0
+    val_yellow = up_slow[-1] if up_slow else 0
 
-    val_blue = low_fast[-1]
-    val_red = up_fast[-1]
-    val_green = low_slow[-1]
-    val_yellow = up_slow[-1]
+    col_blue = format_color_block(current_close, val_blue, "🔵", is_support=True)
+    col_green = format_color_block(current_close, val_green, "🟢", is_support=True)
+    col_red = format_color_block(current_close, val_red, "🔴", is_support=False)
+    col_yellow = format_color_block(current_close, val_yellow, "🟡", is_support=False)
 
-    blue_str = format_single_line_status(current_close, val_blue, "🔵", is_support=True)
-    green_str = format_single_line_status(current_close, val_green, "🟢", is_support=True)
-    red_str = format_single_line_status(current_close, val_red, "🔴", is_support=False)
-    yellow_str = format_single_line_status(current_close, val_yellow, "🟡", is_support=False)
-
-    res = f"{blue_str}, {green_str} | {red_str}, {yellow_str}"
-    return res
+    return col_blue, col_green, col_red, col_yellow
 
 def analyze_timeframe(candles):
     return analyze_4_trends(candles)

@@ -11,44 +11,39 @@ SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
 def get_coin_report(symbol="NEAR"):
     """
-    Detailed Action-Based 4-Trend Scan Report with explicit Current Price header.
-    🪙 {SYMBOL}/USDT (CHI TIẾT 4 TREND)
-    Giá: {current_price}
+    Dynamic Column Padded 4-Trend Scan Report wrapped in HTML <pre> monospace tags.
     """
     symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
     
     # 1. VALIDATE SYMBOL WITH BINANCE
     is_valid, full_symbol = validate_binance_symbol(symbol_upper)
     if not is_valid:
-        return f"❌ Không tìm thấy cặp giao dịch **{symbol_upper}/USDT** trên Binance."
+        return f"❌ Không tìm thấy cặp giao dịch <b>{symbol_upper}/USDT</b> trên Binance."
 
     # 2. FETCH REAL DATA PARALLEL
     ticker, klines_map = fetch_multi_klines_parallel(full_symbol, SCAN_TIMEFRAMES, limit=100)
 
     if not klines_map:
-        return f"❌ Không thể lấy dữ liệu từ Binance cho **{symbol_upper}/USDT**."
+        return f"❌ Không thể lấy dữ liệu từ Binance cho <b>{symbol_upper}/USDT</b>."
 
     curr_price_str = "Chưa xác định"
     if ticker and "lastPrice" in ticker:
         curr_price_str = format_price_level(ticker["lastPrice"])
 
     report = []
-    report.append(f"🪙 **{symbol_upper}/USDT** (CHI TIẾT 4 TREND)")
-    report.append(f"Giá: **{curr_price_str}**\n")
+    report.append(f"<b>🪙 {symbol_upper}/USDT (CHI TIẾT 4 TREND)</b>")
+    report.append(f"Giá: <b>{curr_price_str}</b>\n")
+    report.append("<pre>")
 
     for tf in SCAN_TIMEFRAMES:
         candles = klines_map.get(tf, [])
-        trend_st = analyze_4_trends(candles)
+        col_blue, col_green, col_red, col_yellow = analyze_4_trends(candles)
         tf_label = tf.upper()
-        
-        # Alignment space for 1H, 2H, 4H, 8H, 1D, 1W, 1M
-        if len(tf_label) == 2:
-            tf_display = f"{tf_label} "
-        else:
-            tf_display = tf_label
 
-        report.append(f"▫️ **{tf_display}**: {trend_st}")
+        row_str = f"{tf_label:<4}: {col_blue:<22} | {col_green:<22} | {col_red:<22} | {col_yellow:<22}"
+        report.append(row_str)
 
+    report.append("</pre>")
     return "\n".join(report)
 
 def analyze_single_coin_for_scan(coin):
