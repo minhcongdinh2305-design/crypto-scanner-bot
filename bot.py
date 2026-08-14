@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Telegram Bot Engine + TradingView Webhook Listener + HTML Monospace 4-Trend Scanner
+Telegram Bot Engine + HTTP Web Service Health Check Server + HTML Monospace 4-Trend Scanner
 Pure Python Implementation. Zero PIP dependencies required!
-Compatible with 24/7 Cloud Deployment (Render / Railway / Replit).
+Compatible with 24/7 Render / Railway / Replit Web Services.
 
 Features:
-1. Dynamic Column Padding in HTML <pre> monospace block for 100% straight vertical icon columns (🔵 🟢 🔴 🟡).
-2. Strict Command Matching: Only responds to '/' commands.
-3. parse_mode="HTML" with plain text fallback.
+1. Parallel HTTP Web Server listening on PORT (default 10000) for Render Web Service Health Check!
+2. Dynamic Column Padding in HTML <pre> monospace block for 100% straight vertical icon columns (🔵 🟢 🔴 🟡).
+3. Strict Command Matching: Only responds to '/' commands.
 4. Execution speed: < 0.3s!
 """
 import urllib.request
@@ -25,7 +25,7 @@ from binance_api import get_klines, normalize_symbol
 from chart_engine import generate_chart_image, cleanup_chart_image
 
 CONFIG_FILE = "config.json"
-WEBHOOK_PORT = int(os.environ.get("PORT", 8080))
+WEBHOOK_PORT = int(os.environ.get("PORT", 10000))
 
 def load_config():
     config_data = {}
@@ -137,8 +137,14 @@ bot_token = config.get("telegram_token", "")
 default_chat_id = config.get("group_chat_id", "")
 
 class WebhookRequestHandler(BaseHTTPRequestHandler):
-    """HTTP Request Handler to receive TradingView Webhook Alerts."""
+    """HTTP Request Handler to fulfill Render Web Service Health Checks."""
     
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html; charset=utf-8')
+        self.end_headers()
+        self.wfile.write(b"<html><body><h1>Bot TradingView Webhook & 4-Trend Scanner Server is running!</h1></body></html>")
+
     def do_POST(self):
         global bot_token, default_chat_id
         
@@ -164,17 +170,19 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
         if bot_token and default_chat_id:
             send_message(bot_token, default_chat_id, signal_text)
 
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/html')
-        self.end_headers()
-        self.wfile.write(b"<html><body><h1>Bot TradingView Webhook 24/7 is Active!</h1></body></html>")
+    def log_message(self, format, *args):
+        # Mute standard HTTP log spam to keep console clean
+        return
 
 def start_webhook_server():
-    server_address = ('', WEBHOOK_PORT)
-    httpd = HTTPServer(server_address, WebhookRequestHandler)
-    print(f"🌐 TRADINGVIEW WEBHOOK SERVER RUNNING ON PORT: {WEBHOOK_PORT}")
-    httpd.serve_forever()
+    """Starts HTTP Server in background thread for Render Web Service Port Binding."""
+    try:
+        server_address = ('0.0.0.0', WEBHOOK_PORT)
+        httpd = HTTPServer(server_address, WebhookRequestHandler)
+        print(f"🌐 HTTP Web Service is running on port {WEBHOOK_PORT}")
+        httpd.serve_forever()
+    except Exception as e:
+        print(f"⚠️ HTTP Server Exception on port {WEBHOOK_PORT}: {e}")
 
 def parse_coin_and_tf(cmd_text):
     clean = cmd_text.strip().lower()
@@ -306,12 +314,14 @@ def run_bot():
     bot_info = me["result"]
     bot_username = bot_info.get('username', '')
 
+    # START HTTP WEB SERVICE SERVER FOR RENDER PORT BINDING
     server_thread = threading.Thread(target=start_webhook_server, daemon=True)
     server_thread.start()
 
     print("\n" + "="*60)
-    print(f"🚀 TELEGRAM BOT + HTML MONOSPACE 4-TREND SCANNER 24/7 ACTIVE!")
+    print(f"🚀 TELEGRAM BOT + HTTP WEB SERVICE SERVER 24/7 ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
+    print(f"• Web Service Port: {WEBHOOK_PORT}")
     print(f"• Format: HTML <pre> monospace 4 aligned columns (🔵 🟢 🔴 🟡)")
     print("="*60 + "\n")
 
