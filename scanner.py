@@ -1,5 +1,5 @@
 from binance_api import get_ticker_24h, fetch_multi_klines_parallel
-from ta_engine import get_kivanc_4trend_status
+from ta_engine import get_mandatory_4trend_status
 from concurrent.futures import ThreadPoolExecutor
 
 TOP_COINS = [
@@ -9,10 +9,10 @@ TOP_COINS = [
 
 SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
-def get_coin_report(symbol="BTC"):
+def get_coin_report(symbol="NEAR"):
     """
-    Kıvanç Özbilgiç 4-Trend Line Scan Report (XANH, TÍM, ĐỎ, CAM) across 9 timeframes.
-    ▫️ {TF}: {Trạng thái 4 đường}
+    Mandatory 4-Line SuperTrend Scan Report (🔵 Blue, 🟢 Green | 🔴 Red, 🟡 Yellow) across 9 timeframes.
+    ▫️ {TF}: Trên 🔵 (+X%), Trên 🟢 (+X%) | Dưới 🔴 (-X%), Dưới 🟡 (-X%)
     """
     symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
     full_symbol = symbol_upper + "USDT"
@@ -23,14 +23,14 @@ def get_coin_report(symbol="BTC"):
         return f"❌ Không tìm thấy dữ liệu cho **{symbol_upper}/USDT**!"
 
     report = []
-    report.append(f"🪙 **{symbol_upper}/USDT** (4-TREND SCAN)\n")
+    report.append(f"🪙 **{symbol_upper}/USDT** (CHI TIẾT 4 TREND)\n")
 
     for tf in SCAN_TIMEFRAMES:
         candles = klines_map.get(tf, [])
-        trend_st = get_kivanc_4trend_status(candles)
+        trend_st = get_mandatory_4trend_status(candles)
         tf_label = tf.upper()
         
-        # Space alignment for 1H, 2H, 4H, 8H, 1D, 1W, 1M
+        # Alignment space for 1H, 2H, 4H, 8H, 1D, 1W, 1M
         if len(tf_label) == 2:
             tf_display = f"{tf_label} "
         else:
@@ -52,10 +52,10 @@ def scan_market(coins_list=None):
         scan_futures = [executor.submit(get_coin_report, coin) for coin in coins_list]
         for future in scan_futures:
             res = future.result()
-            if res and "4-TREND SCAN" in res:
+            if res and "CHI TIẾT 4 TREND" in res:
                 results.append(res)
 
     if not results:
-        return "⚪ Không thể lấy báo cáo quét 4 đường Trend."
+        return "⚪ Không thể lấy báo cáo chi tiết 4 đường Trend."
 
     return "\n\n----------------------------\n\n".join(results[:5])

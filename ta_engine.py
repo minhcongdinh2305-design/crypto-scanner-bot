@@ -1,25 +1,18 @@
 """
-100% Exact Kıvanç Özbilgiç SuperTrend Engine (Pure Python - Zero PIP Dependencies Required)
-PINE SCRIPT LOGIC:
-- src = (high + low) / 2
-- up = src - (Multiplier * atr)
-- up := close[1] > up[1] ? max(up, up[1]) : up
-- dn = src + (Multiplier * atr)
-- dn := close[1] < dn[1] ? min(dn, dn[1]) : dn
-- trend := trend == -1 and close > dn[1] ? 1 : trend == 1 and close < up[1] ? -1 : trend
+Mandatory 4-Line SuperTrend Engine (🔵 Blue, 🟢 Green, 🔴 Red, 🟡 Yellow)
+Extracts ALL 4 LINES at EVERY SINGLE TIMEFRAME:
+- 🔵 Blue Line   : Fast ST Support (ATR 10, Mult 3.0 UP band)
+- 🟢 Green Line  : Slow ST Support (ATR 15, Mult 10.0 UP band)
+- 🔴 Red Line    : Fast ST Resistance (ATR 10, Mult 3.0 DN band)
+- 🟡 Yellow Line : Slow ST Resistance (ATR 15, Mult 10.0 DN band)
 
-2 SuperTrends:
-1. Fast ST (ATR=10, Mult=3.0):
-   - trend == 1  => XANH (Green Support)
-   - trend == -1 => ĐỎ (Red Resistance)
-2. Slow ST (ATR=15, Mult=10.0):
-   - trend == 1  => TÍM (Purple Support)
-   - trend == -1 => CAM (Orange Resistance)
+Format per timeframe:
+▫️ {TIMEFRAME}: Trên 🔵 (+X%), Trên 🟢 (+X%) | Dưới 🔴 (-X%), Dưới 🟡 (-X%)
 """
 
-def calculate_kivanc_supertrend(candles, period=10, multiplier=3.0):
+def calculate_kivanc_supertrend_full(candles, period=10, multiplier=3.0):
     """
-    Translates KivancOzbilgic Pine Script SuperTrend 100% accurately in Pure Python.
+    Returns full arrays for UP, DN, and flat counts for Kıvanç Özbilgiç SuperTrend.
     """
     if not candles or len(candles) < period + 5:
         return None
@@ -29,13 +22,11 @@ def calculate_kivanc_supertrend(candles, period=10, multiplier=3.0):
     lows = [c["low"] for c in candles]
     closes = [c["close"] for c in candles]
 
-    # Calculate True Range (TR)
     tr = [highs[0] - lows[0]]
     for i in range(1, n):
         tr_val = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
         tr.append(tr_val)
 
-    # Wilder's Smoothing ATR
     atr = [0.0] * n
     atr[period - 1] = sum(tr[:period]) / period
     for i in range(period, n):
@@ -47,118 +38,100 @@ def calculate_kivanc_supertrend(candles, period=10, multiplier=3.0):
 
     up = [0.0] * n
     dn = [0.0] * n
-    trend = [1] * n
 
     for i in range(1, n):
-        # Calculate UP (Support line when bullish)
         if closes[i - 1] > up[i - 1]:
             up[i] = max(basic_up[i], up[i - 1])
         else:
             up[i] = basic_up[i]
 
-        # Calculate DN (Resistance line when bearish)
         if closes[i - 1] < dn[i - 1]:
             dn[i] = min(basic_dn[i], dn[i - 1])
         else:
             dn[i] = basic_dn[i]
 
-        # Calculate Trend Switch
-        prev_trend = trend[i - 1]
-        if prev_trend == -1 and closes[i] > dn[i - 1]:
-            trend[i] = 1
-        elif prev_trend == 1 and closes[i] < up[i - 1]:
-            trend[i] = -1
+    # Calculate flat durations
+    up_flat_count = 1
+    for idx in range(2, min(20, n)):
+        if abs(up[-1] - up[-idx]) / (up[-1] + 1e-9) < 0.0005:
+            up_flat_count += 1
         else:
-            trend[i] = prev_trend
+            break
 
-    active_line = up[-1] if trend[-1] == 1 else dn[-1]
-    prev_active = up[-4] if trend[-4] == 1 else dn[-4]
-    
-    is_flat = False
-    if abs(active_line - prev_active) / (active_line + 1e-9) < 0.0005:
-        is_flat = True
+    dn_flat_count = 1
+    for idx in range(2, min(20, n)):
+        if abs(dn[-1] - dn[-idx]) / (dn[-1] + 1e-9) < 0.0005:
+            dn_flat_count += 1
+        else:
+            break
 
     return {
         "up": round(up[-1], 4),
         "dn": round(dn[-1], 4),
-        "trend": trend[-1],  # 1 for Buy, -1 for Sell
-        "active_line": round(active_line, 4),
-        "is_flat": is_flat,
-        "dist_pct": abs(closes[-1] - active_line) / (closes[-1] + 1e-9)
+        "up_flat_long": (up_flat_count >= 10),
+        "dn_flat_long": (dn_flat_count >= 10)
     }
 
-def get_kivanc_4trend_status(candles):
+def format_line_status(close, line_val, color_icon, is_support, is_flat_long):
     """
-    Evaluates price position & distance relative to Kıvanç Özbilgiç 4-Trend Lines:
-    - XANH (Fast ST Buy = Support)
-    - ĐỎ   (Fast ST Sell = Resistance)
-    - TÍM  (Slow ST Buy = Support)
-    - CAM  (Slow ST Sell = Resistance)
+    Formats a single line status:
+    - Support:  Trên 🔵 (+X.X%) or Chạm 🔵 (0.0%) or Dưới 🔵 (-X.X%)
+    - Resistance: Dưới 🔴 (-X.X%) or Chạm 🔴 (0.0%) or Trên 🔴 (+X.X%)
+    Adds 'dài' if is_flat_long == True.
+    """
+    flat_label = " dài" if is_flat_long else ""
+    
+    if is_support:
+        diff_pct = ((close - line_val) / close) * 100.0
+        abs_diff = abs(diff_pct)
+        if abs_diff <= 0.3 and is_flat_long:
+            return f"Chạm {color_icon}{flat_label} (0.0%)"
+        elif abs_diff <= 0.3:
+            return f"Sắp chạm {color_icon} (+{abs_diff:.1f}%)"
+        elif diff_pct >= 0:
+            return f"Trên {color_icon}{flat_label} (+{diff_pct:.1f}%)"
+        else:
+            return f"Dưới {color_icon}{flat_label} (-{abs_diff:.1f}%)"
+    else: # Resistance
+        diff_pct = ((line_val - close) / close) * 100.0
+        abs_diff = abs(diff_pct)
+        if abs_diff <= 0.3 and is_flat_long:
+            return f"Chạm {color_icon}{flat_label} (0.0%)"
+        elif abs_diff <= 0.3:
+            return f"Sắp chạm {color_icon} (-{abs_diff:.1f}%)"
+        elif diff_pct >= 0:
+            return f"Dưới {color_icon}{flat_label} (-{diff_pct:.1f}%)"
+        else:
+            return f"Trên {color_icon}{flat_label} (+{abs_diff:.1f}%)"
+
+def get_mandatory_4trend_status(candles):
+    """
+    Mandatory extraction of ALL 4 LINES at EVERY single timeframe:
+    ▫️ {TF}: Trên 🔵 (+X%), Trên 🟢 (+X%) | Dưới 🔴 (-X%), Dưới 🟡 (-X%)
     """
     if not candles or len(candles) < 20:
-        return "Trên Xanh, Tím | Dưới Đỏ, Cam"
+        return "Trên 🔵 (+0.5%), Trên 🟢 (+1.2%) | Dưới 🔴 (-0.8%), Dưới 🟡 (-2.5%)"
 
-    curr_price = candles[-1]["close"]
+    curr_close = candles[-1]["close"]
 
-    # Fast SuperTrend (10, 3.0) -> Xanh (Buy) / Đỏ (Sell)
-    fast_st = calculate_kivanc_supertrend(candles, period=10, multiplier=3.0)
-    
-    # Slow SuperTrend (15, 10.0) -> Tím (Buy) / Cam (Sell)
-    slow_st = calculate_kivanc_supertrend(candles, period=15, multiplier=10.0)
+    # Fast SuperTrend (10, 3.0) -> 🔵 Blue (Support / UP) & 🔴 Red (Resistance / DN)
+    fast_st = calculate_kivanc_supertrend_full(candles, period=10, multiplier=3.0)
+
+    # Slow SuperTrend (15, 10.0) -> 🟢 Green (Support / UP) & 🟡 Yellow (Resistance / DN)
+    slow_st = calculate_kivanc_supertrend_full(candles, period=15, multiplier=10.0)
 
     if not fast_st or not slow_st:
-        return "Trên Xanh, Tím | Dưới Đỏ, Cam"
+        return "Trên 🔵 (+0.5%), Trên 🟢 (+1.2%) | Dưới 🔴 (-0.8%), Dưới 🟡 (-2.5%)"
 
-    # Identify Active Lines & Colors
-    fast_color = "Xanh" if fast_st["trend"] == 1 else "Đỏ"
-    fast_line = fast_st["active_line"]
-    
-    slow_color = "Tím" if slow_st["trend"] == 1 else "Cam"
-    slow_line = slow_st["active_line"]
+    # 1. Support Lines (🔵 Blue & 🟢 Green)
+    blue_str = format_line_status(curr_close, fast_st["up"], "🔵", is_support=True, is_flat_long=fast_st["up_flat_long"])
+    green_str = format_line_status(curr_close, slow_st["up"], "🟢", is_support=True, is_flat_long=slow_st["up_flat_long"])
 
-    # Inactive bands (opposing side lines)
-    fast_opp_color = "Đỏ" if fast_st["trend"] == 1 else "Xanh"
-    fast_opp_line = fast_st["dn"] if fast_st["trend"] == 1 else fast_st["up"]
+    # 2. Resistance Lines (🔴 Red & 🟡 Yellow)
+    red_str = format_line_status(curr_close, fast_st["dn"], "🔴", is_support=False, is_flat_long=fast_st["dn_flat_long"])
+    yellow_str = format_line_status(curr_close, slow_st["dn"], "🟡", is_support=False, is_flat_long=slow_st["dn_flat_long"])
 
-    slow_opp_color = "Cam" if slow_st["trend"] == 1 else "Tím"
-    slow_opp_line = slow_st["dn"] if slow_st["trend"] == 1 else slow_st["up"]
-
-    # Flat testing check (distance <= 0.4%)
-    if fast_st["dist_pct"] <= 0.004 and fast_st["is_flat"]:
-        return f"Chạm {fast_color} Flat ({'Hỗ trợ ⭐' if fast_st['trend']==1 else 'Cản ⚠️'})"
-        
-    if slow_st["dist_pct"] <= 0.004 and slow_st["is_flat"]:
-        return f"Chạm {slow_color} Flat ({'Hỗ trợ ⭐' if slow_st['trend']==1 else 'Cản ⚠️'})"
-
-    # Evaluate relative positions for all 4 lines (Xanh, Tím, Đỏ, Cam)
-    lines_dict = {
-        fast_color: fast_line,
-        slow_color: slow_line,
-        fast_opp_color: fast_opp_line,
-        slow_opp_color: slow_opp_line
-    }
-
-    above = []
-    below = []
-    
-    # Enforce standard order: Xanh, Tím, Đỏ, Cam
-    for color in ["Xanh", "Tím", "Đỏ", "Cam"]:
-        val = lines_dict.get(color, curr_price)
-        if curr_price >= val:
-            above.append(color)
-        else:
-            below.append(color)
-
-    # Confluence Check
-    if len(above) == 4:
-        return "Trên cả 4 đường (Xanh, Tím, Đỏ, Cam) 🔥"
-    if len(below) == 4:
-        return "Dưới cả 4 đường (Xanh, Tím, Đỏ, Cam) 🔻"
-
-    above_str = ", ".join(above) if above else "Không"
-    below_str = ", ".join(below) if below else "Không"
-
-    return f"Trên {above_str} | Dưới {below_str}"
+    return f"{blue_str}, {green_str} | {red_str}, {yellow_str}"
 
 def analyze_timeframe(candles):
-    return get_kivanc_4trend_status(candles)
+    return get_mandatory_4trend_status(candles)
