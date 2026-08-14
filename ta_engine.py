@@ -1,15 +1,13 @@
 """
-Advanced Technical Analysis (TA) Engine
-Modules Included:
-1. Double Supertrend (Major: 15/10, Minor: 10/3) + Flat Line & Key S/R Level Detection
-2. EMA Expansion (EMA 20 & EMA 50 Crossover & Expansion Force)
-3. RSI TueTrading + Multi-Pivot Bullish/Bearish Divergence Detection
-4. Squeeze & Breakout Energy Momentum Detection
-Robust exception handling & sanitization included!
+Advanced Technical Analysis (TA) Engine - Strict Action-Based Signal Filter
+Only detects active, clear technical events:
+1. Supertrend: Testing Flat S/R level OR Flipped color within last 1-3 candles.
+2. EMA: Crossover (last 1-3 candles) OR Steep Expansion Force.
+3. RSI: Bullish/Bearish Divergence OR Extreme Zones (<30 / >70).
+Neutral / Floating states are strictly ignored!
 """
 
 def calculate_ema(prices, period):
-    """Calculate Exponential Moving Average (EMA)."""
     if not prices or len(prices) < period:
         return []
     
@@ -22,12 +20,10 @@ def calculate_ema(prices, period):
             ema.append(new_ema)
             
         return ema
-    except Exception as e:
-        print(f"❌ Error in calculate_ema ({period}): {e}")
+    except Exception:
         return []
 
 def calculate_atr(candles, period=15):
-    """Calculate Average True Range (ATR)."""
     if not candles or len(candles) <= period:
         return []
         
@@ -49,16 +45,14 @@ def calculate_atr(candles, period=15):
             atr.append(new_atr)
             
         return atr
-    except Exception as e:
-        print(f"❌ Error in calculate_atr ({period}): {e}")
+    except Exception:
         return []
 
 def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
     """
-    Calculate Supertrend & Flat Line Key Level Detection.
-    Returns: {trend, is_buy, value, is_flat, flat_duration, history}
+    Supertrend Calculation with Flip Event & Flat Level Detection.
     """
-    default_res = {"trend": "NEUTRAL ⚪", "is_buy": False, "value": None, "is_flat": False, "flat_duration": 0, "history": []}
+    default_res = {"trend": "NEUTRAL", "is_buy": False, "value": None, "is_flat": False, "flat_duration": 0, "just_flipped": False, "history": []}
     
     if not candles or len(candles) <= atr_period + 5:
         return default_res
@@ -94,16 +88,10 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
             prev_upper = upper_band[i-1]
             prev_lower = lower_band[i-1]
             
-            if basic_upper < prev_upper or prev_close > prev_upper:
-                final_upper = basic_upper
-            else:
-                final_upper = prev_upper
+            final_upper = basic_upper if (basic_upper < prev_upper or prev_close > prev_upper) else prev_upper
             upper_band.append(final_upper)
             
-            if basic_lower > prev_lower or prev_close < prev_lower:
-                final_lower = basic_lower
-            else:
-                final_lower = prev_lower
+            final_lower = basic_lower if (basic_lower > prev_lower or prev_close < prev_lower) else prev_lower
             lower_band.append(final_lower)
             
             curr_trend = trend[i-1]
@@ -115,7 +103,7 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
             
             supertrend.append(final_lower if curr_trend else final_upper)
 
-        # Flat Line Detection (Detect key S/R level when ST value is constant over 3-5 candles)
+        # Detect Flat Level (constant for 3+ candles)
         is_flat = False
         flat_duration = 1
         if len(supertrend) >= 5:
@@ -128,24 +116,30 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
             if flat_duration >= 3:
                 is_flat = True
 
+        # Detect Flip Event in last 1-3 candles
+        just_flipped = False
+        if len(trend) >= 4:
+            if trend[-1] != trend[-2] or trend[-2] != trend[-3]:
+                just_flipped = True
+
         return {
             "trend": "BUY 🟢" if trend[-1] else "SELL 🔴",
             "is_buy": trend[-1],
             "value": round(supertrend[-1], 4) if supertrend else None,
             "is_flat": is_flat,
             "flat_duration": flat_duration,
+            "just_flipped": just_flipped,
             "history": supertrend
         }
-    except Exception as e:
-        print(f"❌ Error in calculate_supertrend (ATR {atr_period}, Mult {multiplier}): {e}")
+    except Exception:
         return default_res
 
 def analyze_ema_expansion(close_prices):
     """
-    Module 2: EMA Expansion (EMA 20 & EMA 50)
-    Determines Crossover state and Expansion Force.
+    Strict EMA Action Filter:
+    Only flags 'Chớm cắt' (Cross in last 1-3 candles) OR steep expansion force.
     """
-    default_res = {"ema20": None, "ema50": None, "ema200": None, "cross": "NONE", "is_expanding": False, "diff": 0}
+    default_res = {"ema20": None, "ema50": None, "cross": "NONE", "is_expanding": False, "direction": "NEUTRAL"}
     
     if not close_prices or len(close_prices) < 50:
         return default_res
@@ -153,98 +147,91 @@ def analyze_ema_expansion(close_prices):
     try:
         ema20_list = calculate_ema(close_prices, 20)
         ema50_list = calculate_ema(close_prices, 50)
-        ema200_list = calculate_ema(close_prices, 200) if len(close_prices) >= 200 else []
         
-        if not ema20_list or not ema50_list:
+        if not ema20_list or not ema50_list or len(ema20_list) < 5:
             return default_res
 
         ema20 = ema20_list[-1]
         ema50 = ema50_list[-1]
-        ema200 = ema200_list[-1] if ema200_list else None
         
-        # Crossover State
+        # Detect Recent Crossover (last 1-3 candles)
         cross = "NONE"
-        if len(ema20_list) >= 3 and len(ema50_list) >= 3:
-            if ema20_list[-3] < ema50_list[-3] and ema20_list[-1] >= ema50_list[-1]:
-                cross = "GOLDEN CROSS 🔥 (EMA20 Cắt Lên EMA50)"
-            elif ema20_list[-3] > ema50_list[-3] and ema20_list[-1] <= ema50_list[-1]:
-                cross = "DEATH CROSS ⚠️ (EMA20 Cắt Xuống EMA50)"
+        if len(ema20_list) >= 4 and len(ema50_list) >= 4:
+            # Golden Cross check
+            if (ema20_list[-4] < ema50_list[-4] or ema20_list[-3] < ema50_list[-3]) and ema20_list[-1] >= ema50_list[-1]:
+                cross = "GOLDEN"
+            # Death Cross check
+            elif (ema20_list[-4] > ema50_list[-4] or ema20_list[-3] > ema50_list[-3]) and ema20_list[-1] <= ema50_list[-1]:
+                cross = "DEATH"
 
         # Expansion Force Calculation abs(EMA20 - EMA50)
         diff_curr = abs(ema20_list[-1] - ema50_list[-1])
         diff_prev1 = abs(ema20_list[-2] - ema50_list[-2])
         diff_prev2 = abs(ema20_list[-3] - ema50_list[-3])
         
-        is_expanding = (diff_curr > diff_prev1 > diff_prev2)
+        # Steep expansion check
+        is_expanding = (diff_curr > diff_prev1 > diff_prev2) and (diff_curr / (close_prices[-1] + 1e-9) > 0.005)
+        
+        direction = "BUY" if ema20 > ema50 else "SELL"
         
         return {
             "ema20": round(ema20, 4),
             "ema50": round(ema50, 4),
-            "ema200": round(ema200, 4) if ema200 else None,
             "cross": cross,
             "is_expanding": is_expanding,
-            "diff": round(diff_curr, 4)
+            "direction": direction
         }
-    except Exception as e:
-        print(f"❌ Error in analyze_ema_expansion: {e}")
+    except Exception:
         return default_res
 
 def detect_rsi_divergence(candles, rsi_values):
     """
-    Module 3: RSI TueTrading Multi-Pivot Bullish/Bearish Divergence Detection.
+    RSI Multi-Pivot Bullish & Bearish Divergence Detection.
     """
     if not candles or not rsi_values or len(candles) < 30 or len(rsi_values) < 30:
-        return {"divergence": "NONE", "detail": ""}
+        return "NONE"
 
     try:
         close_prices = [c["close"] for c in candles]
         rsi_offset = len(close_prices) - len(rsi_values)
         aligned_rsi = [50.0] * rsi_offset + rsi_values
         
-        # Find Local Swing Lows (Bottoms)
+        # Find Local Swing Lows
         price_lows = []
         for i in range(len(close_prices) - 25, len(close_prices) - 2):
             if close_prices[i] <= close_prices[i-1] and close_prices[i] <= close_prices[i+1]:
-                if close_prices[i] <= close_prices[i-2] and close_prices[i] <= close_prices[i+2]:
-                    price_lows.append((i, close_prices[i], aligned_rsi[i]))
+                price_lows.append((i, close_prices[i], aligned_rsi[i]))
 
-        # Find Local Swing Highs (Tops)
+        # Find Local Swing Highs
         price_highs = []
         for i in range(len(close_prices) - 25, len(close_prices) - 2):
             if close_prices[i] >= close_prices[i-1] and close_prices[i] >= close_prices[i+1]:
-                if close_prices[i] >= close_prices[i-2] and close_prices[i] >= close_prices[i+2]:
-                    price_highs.append((i, close_prices[i], aligned_rsi[i]))
+                price_highs.append((i, close_prices[i], aligned_rsi[i]))
 
         # Bullish Divergence Check
         if len(price_lows) >= 2:
             p1 = price_lows[-2]
             p2 = price_lows[-1]
             if p2[1] < p1[1] and p2[2] > p1[2] + 1.5:
-                return {
-                    "divergence": "BULLISH DIVERGENCE 💎 (Phân Kỳ Dương Đáy)",
-                    "detail": f"Giá tạo Đáy Thấp Hơn ({p2[1]:.2f} < {p1[1]:.2f}) nhưng RSI tạo Đáy Cao Hơn ({p2[2]:.1f} > {p1[2]:.1f})"
-                }
+                return "BULLISH"
 
         # Bearish Divergence Check
         if len(price_highs) >= 2:
             p1 = price_highs[-2]
             p2 = price_highs[-1]
             if p2[1] > p1[1] and p2[2] < p1[2] - 1.5:
-                return {
-                    "divergence": "BEARISH DIVERGENCE ⚠️ (Phân Kỳ Âm Đỉnh)",
-                    "detail": f"Giá tạo Đỉnh Cao Hơn ({p2[1]:.2f} > {p1[1]:.2f}) nhưng RSI tạo Đỉnh Thấp Hơn ({p2[2]:.1f} < {p1[2]:.1f})"
-                }
+                return "BEARISH"
 
-        return {"divergence": "NONE", "detail": ""}
-    except Exception as e:
-        print(f"❌ Error in detect_rsi_divergence: {e}")
-        return {"divergence": "NONE", "detail": ""}
+        return "NONE"
+    except Exception:
+        return "NONE"
 
 def calculate_rsi_tuetrading(candles):
     """
-    Calculate RSI TueTrading with Signal Line & Energy Breakout Squeeze Detection.
+    RSI TueTrading Engine: Divergence OR Extreme Zones (<30 / >70).
+    Neutral states (35 - 65) are strictly ignored!
     """
-    default_res = {"rsi": 50.0, "signal": 50.0, "status": "Trung tính 🟢", "divergence": "NONE", "squeeze_breakout": False}
+    default_res = {"rsi": 50.0, "divergence": "NONE", "extreme": "NONE"}
     
     if not candles or len(candles) <= 25:
         return default_res
@@ -275,132 +262,40 @@ def calculate_rsi_tuetrading(candles):
             rsi = 100.0 if avg_loss == 0 else 100.0 - (100.0 / (1.0 + (avg_gain / avg_loss)))
             rsi_list.append(rsi)
             
-        signal_list = calculate_ema(rsi_list, 9)
         curr_rsi = round(rsi_list[-1], 2)
-        curr_signal = round(signal_list[-1], 2) if signal_list else curr_rsi
+        div = detect_rsi_divergence(candles, rsi_list)
         
-        div_info = detect_rsi_divergence(candles, rsi_list)
-        
-        squeeze_breakout = False
-        if len(rsi_list) >= 4:
-            if rsi_list[-4] < 52 and rsi_list[-3] < 52 and rsi_list[-1] > 55:
-                squeeze_breakout = True
-
-        rsi_status = "Trung tính 🟢"
-        if curr_rsi <= 35:
-            rsi_status = "QUÁ BÁN 💎 (Vùng Gom Mua Rất Đẹp)"
+        extreme = "NONE"
+        if curr_rsi <= 30:
+            extreme = "OVERSOLD" # Quá bán
         elif curr_rsi >= 70:
-            rsi_status = "QUÁ MUA ⚠️ (Vùng Chốt Lời / Cảnh Báo)"
-        elif curr_rsi > curr_signal:
-            rsi_status = "Tăng điểm (Bullish 🟢)"
+            extreme = "OVERBOUGHT" # Quá mua
 
         return {
             "rsi": curr_rsi,
-            "signal": curr_signal,
-            "status": rsi_status,
-            "divergence": div_info["divergence"],
-            "divergence_detail": div_info["detail"],
-            "squeeze_breakout": squeeze_breakout
+            "divergence": div,
+            "extreme": extreme
         }
-    except Exception as e:
-        print(f"❌ Error in calculate_rsi_tuetrading: {e}")
+    except Exception:
         return default_res
 
 def analyze_timeframe(candles):
     """
-    Comprehensive Timeframe Analysis Engine:
-    Integrates Double Supertrend Kıvanç EXACT, EMA Expansion, and RSI TueTrading Divergence.
+    Strict Timeframe Action Filter Engine.
+    Returns structured events for Trend, EMA, and RSI.
     """
     if not candles or len(candles) < 30:
         return None
         
     try:
-        close_prices = [c["close"] for c in candles]
-        current_price = close_prices[-1]
-        
-        # 1. Double Supertrend Kıvanç EXACT
-        st_major = calculate_supertrend(candles, atr_period=15, multiplier=10.0) # ST Lớn
-        st_minor = calculate_supertrend(candles, atr_period=10, multiplier=3.0)  # ST Nhỏ
-        
-        # Proximity Check (ST Nhỏ áp sát ST Lớn)
-        st_proximity = False
-        if st_major["value"] and st_minor["value"]:
-            dist_pct = abs(st_minor["value"] - st_major["value"]) / current_price
-            if dist_pct <= 0.025:
-                st_proximity = True
-                
-        # 2. EMA Expansion
-        ema_info = analyze_ema_expansion(close_prices)
-        
-        # 3. RSI TueTrading & Divergence
+        st_major = calculate_supertrend(candles, atr_period=15, multiplier=10.0)
+        ema_info = analyze_ema_expansion([c["close"] for c in candles])
         rsi_tue = calculate_rsi_tuetrading(candles)
 
-        # 4. Master Setup Evaluation Logic
-        st_buy_confluence = st_major["is_buy"] and st_minor["is_buy"]
-        st_sell_confluence = not st_major["is_buy"] and not st_minor["is_buy"]
-        
-        score = 50
-        reasons = []
-
-        if st_buy_confluence:
-            score += 20
-            reasons.append("Cả 2 Supertrend (Lớn & Nhỏ) đều XANH")
-        elif st_sell_confluence:
-            score -= 20
-            reasons.append("Cả 2 Supertrend (Lớn & Nhỏ) đều ĐỎ")
-
-        if st_major["is_flat"]:
-            if st_major["is_buy"]:
-                score += 15
-                reasons.append(f"Supertrend Lớn XANH đi ngang Flat ({st_major['flat_duration']} nến) làm Hỗ trợ Đáy Rất Mạnh")
-            else:
-                score -= 15
-                reasons.append(f"Supertrend Lớn ĐỎ đi ngang Flat ({st_major['flat_duration']} nến) làm Cản Kháng Cự Rất Mạnh")
-
-        if ema_info["is_expanding"]:
-            score += 10 if (ema_info["ema20"] and current_price > ema_info["ema20"]) else -10
-            reasons.append("EMA 20 & EMA 50 đang DÃN RỘNG MẠNH (Lực xu hướng gia tăng)")
-
-        if "BULLISH DIVERGENCE" in rsi_tue["divergence"]:
-            score += 20
-            reasons.append("Xuất hiện PHÂN KỲ DƯƠNG ĐÁY (Bullish Divergence) cực chuẩn!")
-        elif "BEARISH DIVERGENCE" in rsi_tue["divergence"]:
-            score -= 20
-            reasons.append("Xuất hiện PHÂN KỲ ÂM ĐỈNH (Bearish Divergence) cảnh báo gãy!")
-
-        if rsi_tue["squeeze_breakout"]:
-            score += 10
-            reasons.append("RSI vừa BỨT PHÁ BUNG NÉN nén lực thành công!")
-
-        # Signal Rating Classification
-        rating = "B (BÌNH THƯỜNG)"
-        direction = "TRUNG TÍNH ⚪"
-
-        if score >= 80:
-            rating = "⭐ TÍN HIỆU A+ (CỰC MẠNH 100%)"
-            direction = "LONG CỰC MẠNH 🔥"
-        elif score >= 65:
-            rating = "🟢 TÍN HIỆU A (MẠNH)"
-            direction = "MUA (LONG) 🟢"
-        elif score <= 20:
-            rating = "⚠️ TÍN HIỆU A+ (CỰC MẠNH 100%)"
-            direction = "SHORT CỰC MẠNH 🔻"
-        elif score <= 35:
-            rating = "🔴 TÍN HIỆU A (MẠNH)"
-            direction = "BÁN (SHORT) 🔴"
-
         return {
-            "price": current_price,
             "st_major": st_major,
-            "st_minor": st_minor,
-            "st_proximity": st_proximity,
             "ema_info": ema_info,
-            "rsi_tue": rsi_tue,
-            "score": score,
-            "rating": rating,
-            "direction": direction,
-            "reasons": reasons
+            "rsi_tue": rsi_tue
         }
-    except Exception as e:
-        print(f"❌ Error in analyze_timeframe: {e}")
+    except Exception:
         return None
