@@ -1,10 +1,18 @@
 """
-Pure Python SuperTrend Engine (Zero External Dependencies Required)
-100% Exact User Formula Implementation:
-- Fast ST (ATR 10, Mult 3.0) -> low_fast (🔵 Blue) & up_fast (🔴 Red)
-- Slow ST (ATR 15, Mult 10.0) -> low_slow (🟢 Green) & up_slow (🟡 Yellow)
-Returns 'Chưa đủ dữ liệu nến' for empty/short 1W and 1M candles.
+100% Real Binance Data SuperTrend Engine with Explicit Price Levels
+Format per timeframe:
+▫️ 4H : 🔵 1.580 (+1.2%), 🟢 1.450 (+9.5%) | 🔴 1.630 (-1.5%), 🟡 1.800 (-12.0%)
 """
+
+def format_price_level(val):
+    if val >= 1000:
+        return f"{val:.1f}"
+    elif val >= 1:
+        return f"{val:.3f}"
+    elif val >= 0.01:
+        return f"{val:.4f}"
+    else:
+        return f"{val:.6f}"
 
 def calculate_supertrend(candles, period=10, multiplier=3.0):
     if not candles or len(candles) < period + 5:
@@ -57,18 +65,7 @@ def calculate_supertrend(candles, period=10, multiplier=3.0):
 
     return lowerband, upperband, trend
 
-def analyze_4_trends(df):
-    if df is None:
-        return "Chưa đủ dữ liệu nến"
-        
-    if isinstance(df, list):
-        candles = df
-    else:
-        try:
-            candles = df.to_dict('records')
-        except Exception:
-            candles = []
-
+def analyze_4_trends(candles):
     if not candles or len(candles) < 15:
         return "Chưa đủ dữ liệu nến"
 
@@ -82,20 +79,25 @@ def analyze_4_trends(df):
     if not low_fast or not low_slow or not up_fast or not up_slow:
         return "Chưa đủ dữ liệu nến"
 
-    # Lấy giá trị gần nhất
+    # Last price level values
     val_blue = low_fast[-1]
     val_red = up_fast[-1]
     val_green = low_slow[-1]
     val_yellow = up_slow[-1]
     
-    # Tính % khoảng cách
+    # Percentage distance calculations
     diff_blue = ((current_close - val_blue) / current_close) * 100.0
     diff_green = ((current_close - val_green) / current_close) * 100.0
     diff_red = ((val_red - current_close) / current_close) * 100.0
     diff_yellow = ((val_yellow - current_close) / current_close) * 100.0
     
-    # Format văn bản kèm icon và số %
-    res = f"Trên 🔵 (+{diff_blue:.1f}%), Trên 🟢 (+{diff_green:.1f}%) | Dưới 🔴 (-{diff_red:.1f}%), Dưới 🟡 (-{diff_yellow:.1f}%)"
+    # Formatted price levels
+    p_blue = format_price_level(val_blue)
+    p_green = format_price_level(val_green)
+    p_red = format_price_level(val_red)
+    p_yellow = format_price_level(val_yellow)
+
+    res = f"🔵 {p_blue} (+{diff_blue:.1f}%), 🟢 {p_green} (+{diff_green:.1f}%) | 🔴 {p_red} (-{diff_red:.1f}%), 🟡 {p_yellow} (-{diff_yellow:.1f}%)"
     return res
 
 def analyze_timeframe(candles):

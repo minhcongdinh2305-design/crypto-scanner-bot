@@ -1,7 +1,6 @@
-from binance_api import get_ticker_24h, fetch_multi_klines_parallel
+from binance_api import validate_binance_symbol, fetch_multi_klines_parallel
 from ta_engine import analyze_4_trends
 from concurrent.futures import ThreadPoolExecutor
-import time
 
 TOP_COINS = [
     "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", 
@@ -12,16 +11,21 @@ SCAN_TIMEFRAMES = ["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"]
 
 def get_coin_report(symbol="NEAR"):
     """
-    Sub-Second Multi-Threaded 4-Trend Scan Report (limit=100 candles, 9 workers).
+    Validates symbol with Binance REST API first.
+    If invalid or non-existent, immediately returns error message and stops.
     """
     symbol_upper = symbol.upper().replace("USDT", "").replace("SCAN", "").replace("/", "").strip()
-    full_symbol = symbol_upper + "USDT"
     
-    # Concurrent multi-threaded fetch of all 9 timeframes at limit=100 candles
+    # 1. VALIDATE SYMBOL WITH BINANCE
+    is_valid, full_symbol = validate_binance_symbol(symbol_upper)
+    if not is_valid:
+        return f"❌ Không tìm thấy cặp giao dịch **{symbol_upper}/USDT** trên Binance."
+
+    # 2. FETCH REAL DATA PARALLEL
     ticker, klines_map = fetch_multi_klines_parallel(full_symbol, SCAN_TIMEFRAMES, limit=100)
 
-    if not ticker:
-        return f"❌ Không tìm thấy dữ liệu cho **{symbol_upper}/USDT**!"
+    if not klines_map:
+        return f"❌ Không thể lấy dữ liệu từ Binance cho **{symbol_upper}/USDT**."
 
     report = []
     report.append(f"🪙 **{symbol_upper}/USDT** (CHI TIẾT 4 TREND)\n")

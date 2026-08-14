@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Telegram Bot Engine + TradingView Webhook Listener + Color Circle 4-Trend Scanner
+Telegram Bot Engine + TradingView Webhook Listener + Real Binance Data 4-Trend Scanner
 Pure Python Implementation. Zero PIP dependencies required!
 Compatible with 24/7 Cloud Deployment (Render / Railway / Replit).
 
 Features:
-1. Wrap message handler in try...except block with direct traceback report to Telegram.
-2. Supports all syntax: /link, /near, /btc, /linkscan, link, near, btc.
-3. Fallback to plain text if Telegram Markdown parsing fails.
-4. Execution speed: < 0.3s!
+1. STRICT COMMAND MATCHING: Only responds to commands starting with '/' (e.g. /near, /link, /btc, /scan link).
+2. Zero mock data. 100% real Binance API data.
+3. Symbol Validation: Returns error if pair does not exist on Binance.
+4. Explicit Price Levels formatted alongside % distances.
+5. Global try...except with traceback & plain text fallback.
 """
 import urllib.request
 import urllib.parse
@@ -64,10 +65,6 @@ def telegram_api(token, method, params=None):
         return None
 
 def send_message(token, chat_id, text):
-    """
-    Sends message with Markdown mode first.
-    Falls back to Plain Text if Markdown parsing fails so bot NEVER goes silent!
-    """
     res = telegram_api(token, "sendMessage", {
         "chat_id": chat_id,
         "text": text,
@@ -75,7 +72,6 @@ def send_message(token, chat_id, text):
     })
     
     if not res or not res.get("ok"):
-        # Fallback to plain text
         res = telegram_api(token, "sendMessage", {
             "chat_id": chat_id,
             "text": text
@@ -179,11 +175,11 @@ def start_webhook_server():
 
 def parse_coin_and_tf(cmd_text):
     """
-    Parses all user input formats:
-    - /link, /near, /btc
-    - /linkscan, /nearscan
-    - /btc4h, /link3d
-    - link, near, btc
+    Parses commands cleanly:
+    - /near -> (NEAR, None)
+    - /linkscan -> (LINK, None)
+    - /btc4h -> (BTC, 4h)
+    - /scan link -> (LINK, None)
     """
     clean = cmd_text.strip().lower()
     if clean.startswith("/"):
@@ -215,8 +211,9 @@ def parse_coin_and_tf(cmd_text):
 
 def handle_update(token, update, bot_username=""):
     """
-    Process incoming Telegram message wrapped in a global try...except block.
-    In case of any error, automatically prints error traceback directly to Telegram!
+    STRICT COMMAND MATCHING:
+    ONLY responds when message starts with '/' or bot is tagged!
+    Ignores plain text messages like 'Lô', 'hello'.
     """
     global default_chat_id, config
     
@@ -235,6 +232,14 @@ def handle_update(token, update, bot_username=""):
     if not text:
         return
 
+    # STRICT RULE: ONLY RESPOND IF MESSAGE STARTS WITH '/' OR BOT IS TAGGED!
+    is_command = text.startswith("/")
+    is_tagged = bot_username and f"@{bot_username.lower()}" in text.lower()
+    
+    if not is_command and not is_tagged:
+        # Ignore plain text conversation like "Lô", "hello"
+        return
+
     try:
         clean_text = text.split("@")[0].strip()
         parts = clean_text.split()
@@ -246,10 +251,10 @@ def handle_update(token, update, bot_username=""):
             welcome = (
                 "🤖 **TRỢ LÝ CHỈ BÁO CRYPTO (CI STUDIO BOT)**\n\n"
                 "📌 **CÂU LỆNH SỬ DỤNG:**\n"
-                "• `/btc`, `/link`, `/near` (hoặc gõ `link`, `near`)\n"
-                "• `/btc4h`, `/near3d` : Chụp ảnh CHART TradingView THẬT 100% + Báo cáo!\n"
-                "• `/scan` : Quét Top Coins\n"
-                "• `/help` : Hướng dẫn"
+                "• `/near`, `/link`, `/btc` (Quét 4 đường Trend + Mức giá thật!)\n"
+                "• `/btc4h`, `/near3d` (Chụp ảnh CHART TradingView THẬT 100%)\n"
+                "• `/scan` (Quét Top Coins)\n"
+                "• `/help` (Hướng dẫn)"
             )
             send_message(token, chat_id, welcome)
             return
@@ -311,9 +316,9 @@ def run_bot():
     server_thread.start()
 
     print("\n" + "="*60)
-    print(f"🚀 TELEGRAM BOT 24/7 ACTIVE!")
+    print(f"🚀 TELEGRAM BOT + REAL BINANCE DATA 24/7 ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
-    print(f"• Listening to: /link, /near, /btc, link, near, btc")
+    print(f"• Strict Command Filter: ONLY responds to '/' commands (e.g. /near, /link, /btc)")
     print("="*60 + "\n")
 
     offset = 0
