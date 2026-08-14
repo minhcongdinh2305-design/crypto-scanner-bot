@@ -4,14 +4,13 @@ from ta_engine import calculate_supertrend, format_price_level
 def check_btc_4h_signal():
     """
     Dedicated 24/7 BTC 4H Auto-Monitor Signal Evaluator.
-    Returns (triggered, signal_type, alert_message)
-    100% SILENT when price is floating in the middle (neither Blue <= 0.8% nor Red <= 0.8%).
+    Returns (triggered, signal_type, alert_message, current_price, val_blue, val_red)
     """
     candles = get_klines("BTCUSDT", "4h", 100)
     ticker = get_ticker_24h("BTCUSDT")
 
     if not candles or len(candles) < 20 or not ticker:
-        return False, None, None
+        return False, None, None, 0, 0, 0
 
     current_price = ticker["lastPrice"]
     price_str = format_price_level(current_price)
@@ -22,7 +21,7 @@ def check_btc_4h_signal():
     low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0)
 
     if not low_fast or not low_slow or not up_fast or not up_slow:
-        return False, None, None
+        return False, None, None, current_price, 0, 0
 
     val_blue = low_fast[-1]
     val_red = up_fast[-1]
@@ -52,7 +51,7 @@ def check_btc_4h_signal():
             f"{green_line_str}\n\n"
             f"👉 <i>Hành động: Canh phản ứng nến rút râu / đảo chiều quanh {val_blue_str}!</i>"
         )
-        return True, sig_type, alert_msg
+        return True, sig_type, alert_msg, current_price, val_blue, val_red
 
     # 2. KHI GIÁ HỒI LÊN GẦN RED (abs(diff_red) <= 0.8%)
     if 0.0 <= abs(diff_red) <= 0.8:
@@ -74,27 +73,27 @@ def check_btc_4h_signal():
             f"{yellow_line_str}\n\n"
             f"👉 <i>Hành động: Canh phản ứng đảo chiều giảm / chốt lời quanh {val_red_str}!</i>"
         )
-        return True, sig_type, alert_msg
+        return True, sig_type, alert_msg, current_price, val_blue, val_red
 
-    # Floating in middle -> 100% SILENT
-    return False, None, None
+    # Floating in middle
+    return False, None, None, current_price, val_blue, val_red
 
-def get_coin_report(symbol="BTC"):
+def get_btc_4h_check_report():
     """
-    Returns single manual BTC 4H report.
+    Instant test report triggered by /check or /test command.
     """
     ticker = get_ticker_24h("BTCUSDT")
     candles = get_klines("BTCUSDT", "4h", 100)
 
     if not ticker or not candles:
-        return "❌ Không thể lấy dữ liệu BTC 4H từ Binance."
+        return "❌ Không thể kết nối tới Binance API để lấy dữ liệu BTC 4H."
 
     curr_price = ticker["lastPrice"]
     low_fast, up_fast, trend_fast = calculate_supertrend(candles, period=10, multiplier=3.0)
     low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0)
 
     if not low_fast or not low_slow or not up_fast or not up_slow:
-        return "❌ Không đủ dữ liệu nến BTC 4H."
+        return "❌ Không đủ nến lịch sử BTC 4H để tính SuperTrend."
 
     val_blue = low_fast[-1]
     val_red = up_fast[-1]
@@ -106,15 +105,35 @@ def get_coin_report(symbol="BTC"):
     diff_red = ((val_red - curr_price) / curr_price) * 100.0
     diff_yellow = ((val_yellow - curr_price) / curr_price) * 100.0
 
+    gap_green = ((val_blue - val_green) / val_blue) * 100.0 if val_blue > 0 else 0.0
+    gap_yellow = ((val_yellow - val_red) / val_red) * 100.0 if val_red > 0 else 0.0
+
+    status_note = "⚪ <b>Trạng thái:</b> Giá đang nằm lơ lửng ở giữa (Chưa chạm vùng nhạy cảm)."
+    if 0.0 <= diff_blue <= 0.8:
+        if 0.0 <= gap_green <= 3.0:
+            status_note = "🚨 <b>Trạng thái:</b> CHẠM HỖ TRỢ KÉP CỰC CỨNG (🔵 + 🟢)!"
+        else:
+            status_note = "🚨 <b>Trạng thái:</b> CHẠM HỖ TRỢ XANH (🔵)!"
+    elif 0.0 <= abs(diff_red) <= 0.8:
+        if 0.0 <= gap_yellow <= 3.0:
+            status_note = "🚨 <b>Trạng thái:</b> CHẠM CẢN KÉP MẠNH (🔴 + 🟡)!"
+        else:
+            status_note = "🚨 <b>Trạng thái:</b> CHẠM KHÁNG CỰ ĐỎ (🔴)!"
+
     report = [
-        "🤖 <b>BÁO CÁO TRẠNG THÁI BTC 4H</b>",
-        f"Giá hiện tại: <b>{format_price_level(curr_price)} USDT</b>\n",
-        f"🔵 Blue Support (Nhanh): <b>{format_price_level(val_blue)}</b> (+{diff_blue:.1f}%)",
-        f"🟢 Green Support (Chậm) : <b>{format_price_level(val_green)}</b> (+{diff_green:.1f}%)",
-        f"🔴 Red Resistance (Nhanh): <b>{format_price_level(val_red)}</b> (-{diff_red:.1f}%)",
-        f"🟡 Yellow Resistance (Chậm): <b>{format_price_level(val_yellow)}</b> (-{diff_yellow:.1f}%)"
+        "🧪 <b>BẢN TIN KIỂM TRA HỆ THỐNG BTC 4H (/check)</b>\n",
+        f"▫️ <b>Giá BTC hiện tại:</b> {format_price_level(curr_price)} USDT",
+        f"▫️ 🔵 <b>Blue Support:</b> {format_price_level(val_blue)} (+{diff_blue:.1f}%)",
+        f"▫️ 🟢 <b>Green Support:</b> {format_price_level(val_green)} (dưới Blue {gap_green:.2f}%)",
+        f"▫️ 🔴 <b>Red Resistance:</b> {format_price_level(val_red)} (-{abs(diff_red):.1f}%)",
+        f"▫️ 🟡 <b>Yellow Resistance:</b> {format_price_level(val_yellow)} (trên Red {gap_yellow:.2f}%)\n",
+        f"{status_note}\n",
+        "✅ <i>Hệ thống kết nối Binance & Telegram hoạt động hoàn hảo 24/7!</i>"
     ]
     return "\n".join(report)
 
+def get_coin_report(symbol="BTC"):
+    return get_btc_4h_check_report()
+
 def scan_market(coins_list=None):
-    return get_coin_report("BTC")
+    return get_btc_4h_check_report()

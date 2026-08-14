@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-Dedicated BTC 4H 24/7/365 Auto-Monitor & Alert Telegram Bot Engine
+Dedicated BTC 4H 24/7/365 Auto-Monitor & Self Keep-Alive Bot Engine
 Pure Python Implementation. Zero PIP dependencies required!
 Compatible with 24/7 Render / Railway / Replit Web Services.
 
-Core Task:
-1. 24/7/365 Silent Background Thread auto-scans BTC 4H candles every 1 minute.
-2. 100% SILENT when price is floating in the middle.
-3. Sends EXACT template alert when price touches Blue Support (diff <= 0.8%) or Red Resistance (diff <= 0.8%).
-4. Anti-Spam Cooldown System (60 minutes).
-5. Automatically saves chat_id on /start or any incoming message.
+Features:
+1. Instant test command /check & /test.
+2. Self-ping Keep-Alive mechanism preventing Render Free tier spin down.
+3. Explicit Console Logs: [4H Scan] BTC: {price} | Blue: {blue} | Red: {red} | Status: OK.
+4. Silent 24/7 background monitor with 60-minute anti-spam cooldown.
 """
 import urllib.request
 import urllib.parse
@@ -21,11 +20,12 @@ import threading
 import re
 import traceback
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from scanner import get_coin_report, check_btc_4h_signal
-from binance_api import get_klines, normalize_symbol
+from scanner import get_btc_4h_check_report, check_btc_4h_signal
+from ta_engine import format_price_level
 
 CONFIG_FILE = "config.json"
 WEBHOOK_PORT = int(os.environ.get("PORT", 10000))
+RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://crypto-scanner-bot-zs2j.onrender.com")
 
 # ANTI-SPAM COOLDOWN STATE
 last_alert_type = None
@@ -68,10 +68,6 @@ def telegram_api(token, method, params=None):
         return None
 
 def send_message(token, chat_id, text):
-    """
-    Sends message with HTML parse_mode first.
-    Falls back to Plain Text if HTML parsing fails so bot NEVER goes silent!
-    """
     res = telegram_api(token, "sendMessage", {
         "chat_id": chat_id,
         "text": text,
@@ -86,7 +82,7 @@ def send_message(token, chat_id, text):
     return res
 
 def scan_coin(symbol="BTC"):
-    return get_coin_report("BTC")
+    return get_btc_4h_check_report()
 
 # GLOBAL STATE
 config = load_config()
@@ -99,7 +95,7 @@ class WebhookRequestHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
-        self.wfile.write(b"<html><body><h1>Dedicated BTC 4H 24/7/365 Auto-Monitor Bot is Active!</h1></body></html>")
+        self.wfile.write(b"<html><body><h1>Dedicated BTC 4H 24/7/365 Keep-Alive Web Service is Active!</h1></body></html>")
 
     def log_message(self, format, *args):
         return
@@ -114,27 +110,43 @@ def start_webhook_server():
     except Exception as e:
         print(f"⚠️ HTTP Server Exception on port {WEBHOOK_PORT}: {e}")
 
+def keep_alive_self_ping():
+    """Self-ping HTTP GET request to keep Render Web Service awake 24/7/365."""
+    try:
+        req = urllib.request.Request(RENDER_URL, headers={"User-Agent": "RenderKeepAlive/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            pass
+    except Exception:
+        pass
+
 def btc_4h_auto_monitor_loop():
     """
-    24/7/365 SILENT BACKGROUND AUTO-MONITOR FOR BTC 4H.
+    24/7/365 SILENT BACKGROUND AUTO-MONITOR & KEEP-ALIVE FOR BTC 4H.
     Scans every 1 minute (60s).
-    100% SILENT when price is floating in middle.
-    60-Minute Anti-Spam Cooldown system.
+    Prints console heartbeats for Render Logs.
+    Self-pings Render URL to prevent spin down.
     """
     global last_alert_type, last_alert_time, bot_token, default_chat_id
     
-    print("🤖 24/7/365 BACKGROUND AUTO-MONITOR FOR BTC 4H INITIALIZED!")
+    print("🤖 24/7/365 BACKGROUND AUTO-MONITOR & KEEP-ALIVE INITIALIZED!")
     
     while True:
         try:
             time.sleep(60) # Scan every 1 minute
             
-            if not bot_token or not default_chat_id:
-                continue
+            # Keep-Alive Self Ping
+            threading.Thread(target=keep_alive_self_ping, daemon=True).start()
 
-            triggered, signal_type, alert_msg = check_btc_4h_signal()
+            triggered, signal_type, alert_msg, curr_price, val_blue, val_red = check_btc_4h_signal()
             
-            if triggered and alert_msg:
+            # Explicit Heartbeat Console Log for Render Logs Tab
+            p_curr = format_price_level(curr_price)
+            p_blue = format_price_level(val_blue)
+            p_red = format_price_level(val_red)
+            status_text = signal_type if triggered else "OK (Floating)"
+            print(f"[4H Scan] BTC: {p_curr} | Blue: {p_blue} | Red: {p_red} | Status: {status_text}")
+
+            if triggered and alert_msg and bot_token and default_chat_id:
                 now = time.time()
                 # 60-Minute Cooldown (3600s) or new signal type
                 if signal_type != last_alert_type or (now - last_alert_time > 3600):
@@ -188,18 +200,16 @@ def handle_update(token, update, bot_username=""):
                 "🤖 <b>TRỢ LÝ CẢNH BÁO TỰ ĐỘNG BTC 4H (24/7/365)</b>\n\n"
                 "📌 <b>CƠ CHẾ HOẠT ĐỘNG:</b>\n"
                 "• Bot chạy ngầm im lặng quét BTC 4H mỗi 1 phút/lần.\n"
-                "• Giá lơ lửng ở giữa ➔ TUYỆT ĐỐI KHÔNG GỬI TIN NHẮN GIỆP NÀO (Im lặng 100%).\n"
-                "• Chỉ tự động bắn cảnh báo khi BTC chạm Mốc Blue 🔵 (Hỗ trợ) hoặc Red 🔴 (Cản) trong phạm vi 0.8%.\n"
-                "• Phát hiện Hỗ hỗ trợ kép (🟢) và Cản kép (🟡) tự động.\n"
-                "• Chống spam cooldown 60 phút.\n\n"
-                "📌 <b>CÂU LỆNH HỖ TRỢ:</b>\n"
-                "• <code>/btc</code> : Báo cáo trạng thái mốc giá BTC 4H hiện tại."
+                "• Tích hợp Keep-Alive tự kích hoạt giữ Render hoạt động 24/7/365 không bị ngủ đông.\n"
+                "• Chỉ tự động bắn cảnh báo khi BTC chạm Mốc Blue 🔵 (Hỗ trợ) hoặc Red 🔴 (Cản) trong phạm vi 0.8%.\n\n"
+                "📌 <b>CÂU LỆNH KIỂM TRA:</b>\n"
+                "• <code>/check</code> hoặc <code>/test</code> : Kiểm tra ngay kết nối Telegram & lấy bản tin test BTC 4H."
             )
             send_message(token, chat_id, welcome)
             return
 
-        if cmd in ["btc", "scan"]:
-            report = scan_coin("BTC")
+        if cmd in ["check", "test", "btc", "scan"]:
+            report = get_btc_4h_check_report()
             send_message(token, chat_id, report)
             return
 
@@ -233,10 +243,11 @@ def run_bot():
     monitor_thread.start()
 
     print("\n" + "="*60)
-    print(f"🚀 SILENT BTC 4H 24/7/365 AUTO-MONITOR BOT ACTIVE!")
+    print(f"🚀 SILENT BTC 4H 24/7/365 AUTO-MONITOR & KEEP-ALIVE BOT ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
     print(f"• HTTP Port: {WEBHOOK_PORT}")
-    print(f"• Dedicated Task: BTC 4H every 1 min (100% Silent mode when floating)")
+    print(f"• Test Command: /check or /test")
+    print(f"• Self Ping URL: {RENDER_URL}")
     print("="*60 + "\n")
 
     offset = 0
