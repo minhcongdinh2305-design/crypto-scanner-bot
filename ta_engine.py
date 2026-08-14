@@ -1,7 +1,10 @@
 """
-Ultra-Fast Pure Supertrend Engine (Double Supertrend: Major 15/10, Minor 10/3)
-Zero EMA, Zero RSI. Focus 100% on Trend Key Levels & Flat Line S/R.
-Execution speed: < 0.1s!
+4-Trend Line Engine (XANH, TÍM, ĐỎ, CAM)
+Calculates exact price position & distance relative to all 4 Trend Lines:
+- XANH (Green): Major Support Line (ST1 Lower, ATR 15 / Mult 10)
+- TÍM (Purple): Minor Support Line (ST2 Lower, ATR 10 / Mult 3)
+- ĐỎ (Red): Major Resistance Line (ST1 Upper, ATR 15 / Mult 10)
+- CAM (Orange): Minor Resistance Line (ST2 Upper, ATR 10 / Mult 3)
 """
 
 def calculate_atr(candles, period=15):
@@ -25,14 +28,17 @@ def calculate_atr(candles, period=15):
     except Exception:
         return []
 
-def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
+def calculate_supertrend_bands(candles, atr_period=15, multiplier=10.0):
+    """
+    Returns upper and lower bands and trend state.
+    """
     if not candles or len(candles) <= atr_period + 5:
-        return {"is_buy": True, "value": 0, "is_flat": False, "dist_pct": 0.0, "just_flipped": False}
+        return {"upper": 0, "lower": 0, "is_buy": True, "upper_flat": False, "lower_flat": False}
         
     try:
         atr = calculate_atr(candles, atr_period)
         if not atr:
-            return {"is_buy": True, "value": 0, "is_flat": False, "dist_pct": 0.0, "just_flipped": False}
+            return {"upper": 0, "lower": 0, "is_buy": True, "upper_flat": False, "lower_flat": False}
             
         offset = len(candles) - len(atr)
         aligned_candles = candles[offset:]
@@ -40,7 +46,6 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
         upper_band = []
         lower_band = []
         trend = []
-        supertrend = []
 
         for i in range(len(atr)):
             c = aligned_candles[i]
@@ -52,7 +57,6 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
                 upper_band.append(basic_upper)
                 lower_band.append(basic_lower)
                 trend.append(True)
-                supertrend.append(basic_lower)
                 continue
                 
             prev_close = aligned_candles[i-1]["close"]
@@ -71,67 +75,90 @@ def calculate_supertrend(candles, atr_period=15, multiplier=10.0):
             elif not curr_trend and c["close"] > final_upper:
                 curr_trend = True
             trend.append(curr_trend)
-            
-            supertrend.append(final_lower if curr_trend else final_upper)
 
-        curr_price = aligned_candles[-1]["close"]
-        st_val = supertrend[-1]
-        dist_pct = abs(curr_price - st_val) / (curr_price + 1e-9)
-
-        is_flat = False
-        if len(supertrend) >= 4:
-            if abs(supertrend[-1] - supertrend[-4]) / (st_val + 1e-9) < 0.0005:
-                is_flat = True
-
-        just_flipped = False
-        if len(trend) >= 3:
-            if trend[-1] != trend[-2] or trend[-2] != trend[-3]:
-                just_flipped = True
+        upper_flat = False
+        lower_flat = False
+        if len(upper_band) >= 4:
+            if abs(upper_band[-1] - upper_band[-4]) / (upper_band[-1] + 1e-9) < 0.0005:
+                upper_flat = True
+            if abs(lower_band[-1] - lower_band[-4]) / (lower_band[-1] + 1e-9) < 0.0005:
+                lower_flat = True
 
         return {
+            "upper": round(upper_band[-1], 4),
+            "lower": round(lower_band[-1], 4),
             "is_buy": trend[-1],
-            "value": st_val,
-            "is_flat": is_flat,
-            "dist_pct": dist_pct,
-            "just_flipped": just_flipped
+            "upper_flat": upper_flat,
+            "lower_flat": lower_flat
         }
     except Exception:
-        return {"is_buy": True, "value": 0, "is_flat": False, "dist_pct": 0.0, "just_flipped": False}
+        return {"upper": 0, "lower": 0, "is_buy": True, "upper_flat": False, "lower_flat": False}
 
-def get_trend_status(candles):
+def get_4trend_status(candles):
     """
-    Evaluates 1 timeframe and produces single crisp Trend Status string:
-    - Chạm Xanh Flat ⭐ (distance <= 0.5% & Flat)
-    - Chạm Đỏ Flat ⚠️ (distance <= 0.5% & Flat)
-    - Vừa đổi màu Xanh 🚀 (flipped to Buy in last 1-2 candles)
-    - Vừa đổi màu Đỏ 🔻 (flipped to Sell in last 1-2 candles)
-    - Cách xa Trend Xanh / Đỏ (distance > 2.5%)
-    - Nằm trên Trend Xanh / Nằm dưới Trend Đỏ
+    Evaluates price position against ALL 4 TREND LINES:
+    - XANH (Green): ST1 Lower
+    - TÍM (Purple): ST2 Lower
+    - ĐỎ (Red): ST1 Upper
+    - CAM (Orange): ST2 Upper
     """
     if not candles or len(candles) < 20:
-        return "Nằm trên Trend Xanh"
+        return "Trên cả 4 đường (Xanh, Tím, Đỏ, Cam) 🔥"
 
-    st_major = calculate_supertrend(candles, atr_period=15, multiplier=10.0)
-    st_minor = calculate_supertrend(candles, atr_period=10, multiplier=3.0)
+    curr_price = candles[-1]["close"]
 
-    is_buy = st_major["is_buy"]
-    dist_pct = st_major["dist_pct"]
-    is_flat = st_major["is_flat"]
-    just_flipped = st_major["just_flipped"] or st_minor["just_flipped"]
+    # Calculate Major ST (15, 10) -> Green (Lower) & Red (Upper)
+    st_maj = calculate_supertrend_bands(candles, atr_period=15, multiplier=10.0)
+    line_xanh = st_maj["lower"]
+    line_do = st_maj["upper"]
 
-    if just_flipped:
-        return "Vừa đổi màu Xanh 🚀" if is_buy else "Vừa đổi màu Đỏ 🔻"
+    # Calculate Minor ST (10, 3) -> Purple (Lower) & Orange (Upper)
+    st_min = calculate_supertrend_bands(candles, atr_period=10, multiplier=3.0)
+    line_tim = st_min["lower"]
+    line_cam = st_min["upper"]
 
-    if dist_pct <= 0.005:
-        if is_buy:
-            return "Chạm Xanh Flat ⭐" if is_flat else "Chạm Trend Xanh"
-        else:
-            return "Chạm Đỏ Flat ⚠️" if is_flat else "Chạm Trend Đỏ"
+    # Testing Flat Level Check (<= 0.4%)
+    dist_xanh = abs(curr_price - line_xanh) / curr_price if line_xanh > 0 else 1.0
+    dist_tim = abs(curr_price - line_tim) / curr_price if line_tim > 0 else 1.0
+    dist_do = abs(curr_price - line_do) / curr_price if line_do > 0 else 1.0
+    dist_cam = abs(curr_price - line_cam) / curr_price if line_cam > 0 else 1.0
 
-    if dist_pct > 0.025:
-        return "Cách xa Trend Xanh" if is_buy else "Cách xa Trend Đỏ"
+    if dist_xanh <= 0.004 and st_maj["lower_flat"]:
+        return "Chạm Xanh Flat (Hỗ trợ ⭐)"
+    if dist_do <= 0.004 and st_maj["upper_flat"]:
+        return "Chạm Đỏ Flat (Cản ⚠️)"
+    if dist_tim <= 0.004 and st_min["lower_flat"]:
+        return "Chạm Tím Flat (Hỗ trợ)"
+    if dist_cam <= 0.004 and st_min["upper_flat"]:
+        return "Chạm Cam Flat (Cản)"
 
-    return "Nằm trên Trend Xanh" if is_buy else "Nằm dưới Trend Đỏ"
+    # Check Position against all 4 lines
+    above_lines = []
+    below_lines = []
+
+    if curr_price > line_xanh: above_lines.append("Xanh")
+    else: below_lines.append("Xanh")
+
+    if curr_price > line_tim: above_lines.append("Tím")
+    else: below_lines.append("Tím")
+
+    if curr_price > line_do: above_lines.append("Đỏ")
+    else: below_lines.append("Đỏ")
+
+    if curr_price > line_cam: above_lines.append("Cam")
+    else: below_lines.append("Cam")
+
+    # Absolute Confluence
+    if len(above_lines) == 4:
+        return "Trên cả 4 đường (Xanh, Tím, Đỏ, Cam) 🔥"
+    if len(below_lines) == 4:
+        return "Dưới cả 4 đường (Xanh, Tím, Đỏ, Cam) 🔻"
+
+    # Squeezed between lines
+    above_str = ", ".join(above_lines) if above_lines else "Không"
+    below_str = ", ".join(below_lines) if below_lines else "Không"
+
+    return f"Trên {above_str} | Dưới {below_str}"
 
 def analyze_timeframe(candles):
-    return get_trend_status(candles)
+    return get_4trend_status(candles)

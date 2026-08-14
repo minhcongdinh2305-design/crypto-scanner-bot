@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Telegram Bot Engine + TradingView Webhook Listener + Pure Trend Scanner
+Telegram Bot Engine + TradingView Webhook Listener + 4-Trend Line Scanner
 Pure Python Implementation. Zero PIP dependencies required!
 Compatible with 24/7 Cloud Deployment (Render / Railway / Replit).
 
 Features:
-1. Pure Supertrend Scanner: /link, /btc, /sol (Outputs 9-Timeframe TREND SCAN Report!)
+1. 4-Trend Line Scanner (XANH, TÍM, ĐỎ, CAM) across 9 timeframes!
 2. TradingView Real Chart Snapshot rendering for commands with timeframe (/btc4h, /link3d)
 3. Execution speed: < 0.3s!
 """
@@ -194,7 +194,7 @@ def parse_coin_and_tf(cmd_text):
 def handle_update(token, update, bot_username=""):
     """
     Process incoming Telegram message.
-    Outputs 100% Pure Supertrend TREND SCAN Report.
+    Outputs 4-Trend Line Scan Report.
     """
     global default_chat_id, config
     
@@ -230,7 +230,7 @@ def handle_update(token, update, bot_username=""):
         welcome = (
             "🤖 **TRỢ LÝ CHỈ BÁO CRYPTO (CI STUDIO BOT)**\n\n"
             "📌 **CÂU LỆNH SỬ DỤNG:**\n"
-            "• `/btc`, `/link`, `/sol` : Quét trạng thái Supertrend 9 khung thời gian!\n"
+            "• `/btc`, `/link`, `/sol` : Quét vị trí giá 4 đường Trend trên 9 khung thời gian!\n"
             "• `/btc4h`, `/link3d` : Chụp ảnh CHART TradingView THẬT 100% + Báo cáo!\n"
             "• `/scan` : Quét Top Coins\n"
             "• `/help` : Hướng dẫn"
@@ -273,7 +273,7 @@ def handle_update(token, update, bot_username=""):
                 send_message(token, chat_id, error_msg)
                 return
 
-        # Return 100% Pure Supertrend TREND SCAN Report
+        # Return 4-Trend Scan Report
         send_message(token, chat_id, report)
 
 def run_bot():
@@ -297,9 +297,9 @@ def run_bot():
     server_thread.start()
 
     print("\n" + "="*60)
-    print(f"🚀 TELEGRAM BOT + PURE SUPERTREND SCANNER 24/7 ACTIVE!")
+    print(f"🚀 TELEGRAM BOT + 4-TREND LINE SCANNER 24/7 ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
-    print(f"• Output: 100% TREND SCAN Report (30M to 1M)")
+    print(f"• Output: 100% 4-TREND SCAN Report (XANH, TÍM, ĐỎ, CAM)")
     print("="*60 + "\n")
 
     offset = 0
