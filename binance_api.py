@@ -7,9 +7,10 @@ try:
 except ImportError:
     HAS_PANDAS = False
 
+# BINANCE FUTURES API PRIORITIZED FIRST FOR EXACT MATCH WITH BINANCE FUTURES CHART
 BINANCE_ENDPOINTS = [
-    "https://api.binance.com/api/v3",        # Binance Spot API (Primary)
-    "https://fapi.binance.com/fapi/v1",      # Binance Futures API
+    "https://fapi.binance.com/fapi/v1",      # Binance Futures API (Primary)
+    "https://api.binance.com/api/v3",        # Binance Spot API (Fallback)
     "https://data-api.binance.vision/api/v3" # Binance Public Data API
 ]
 
@@ -58,7 +59,7 @@ def get_ticker_24h(symbol="BTC"):
 
 def get_klines_df(symbol="BTC", interval="4h", limit=1000):
     """
-    Fetches 1000 REAL OHLCV candles from Binance Spot API (https://api.binance.com/api/v3/klines).
+    Fetches 1000 REAL OHLCV candles from Binance Futures API (https://fapi.binance.com/fapi/v1/klines).
     Normalizes columns: timestamp, open, high, low, close, volume (floats).
     """
     full_symbol = normalize_symbol(symbol)
