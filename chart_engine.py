@@ -3,7 +3,7 @@ Dual-Engine Visual Chart Renderer for Crypto Scanner Bot
 Supports:
 1. Native Matplotlib Renderer (if installed)
 2. Zero-Dependency QuickChart Financial API Fallback (100% Guaranteed Image Generation on ANY Cloud Host!)
-Failsafe fallback built-in!
+Failsafe fallback with automatic 1D candle fallback!
 """
 import os
 import sys
@@ -13,11 +13,6 @@ import urllib.parse
 from ta_engine import calculate_ema, calculate_supertrend, calculate_rsi_tuetrading
 
 def render_chart_quickchart(symbol, interval, candles):
-    """
-    Zero-Dependency High-Resolution Financial Chart Generator using QuickChart API.
-    Guarantees 100% PNG image rendering on ANY cloud hosting provider (Render, Railway, Heroku)
-    WITHOUT requiring matplotlib or C libraries!
-    """
     if not candles or len(candles) < 5:
         return None
 
@@ -118,11 +113,10 @@ def render_chart_quickchart(symbol, interval, candles):
 
 def generate_chart_image(symbol, interval, candles):
     """
-    Dual-Engine Chart Renderer with automatic candle failsafe fetch.
+    Dual-Engine Chart Renderer with automatic 1D candle fallback.
     """
-    if not candles or len(candles) < 5:
-        # Failsafe fallback: Auto-fetch 1d candles if passed candle array is empty
-        print(f"⚠️ Empty candle array for {symbol} ({interval}). Triggering Failsafe 1D candle fetch...")
+    if not candles or len(candles) < 20:
+        print(f"⚠️ Candle count too low ({len(candles) if candles else 0}) for {symbol} ({interval}). Fallback to 150 1D candles...")
         from binance_api import get_klines
         candles = get_klines(symbol, "1d", 150)
 

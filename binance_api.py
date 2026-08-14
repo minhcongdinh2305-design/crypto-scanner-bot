@@ -23,14 +23,42 @@ def fetch_json_with_fallback(path):
             with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode('utf-8'))
-                    # Check if response is a valid list of candles (not error dict)
                     if data and isinstance(data, list):
                         return data
-        except Exception as e:
-            print(f"⚠️ Fetch attempt failed for {url}: {e}")
+        except Exception:
             continue
 
     return None
+
+def resample_candles(candles_1d, days=3):
+    """
+    Resamples daily (1d) candles into multi-day candles (e.g. 2D or 3D).
+    Groups `days` consecutive 1D candles together:
+    - Open = first candle open
+    - High = max(highs)
+    - Low = min(lows)
+    - Close = last candle close
+    - Volume = sum(volumes)
+    """
+    if not candles_1d or len(candles_1d) < days:
+        return []
+
+    resampled = []
+    for i in range(0, len(candles_1d), days):
+        group = candles_1d[i:i+days]
+        if not group:
+            continue
+            
+        resampled.append({
+            "timestamp": group[0]["timestamp"],
+            "open": group[0]["open"],
+            "high": max(c["high"] for c in group),
+            "low": min(c["low"] for c in group),
+            "close": group[-1]["close"],
+            "volume": sum(c["volume"] for c in group)
+        })
+        
+    return resampled
 
 def get_ticker_24h(symbol="BTCUSDT"):
     symbol = symbol.upper().replace("/", "").replace("-", "")
@@ -65,26 +93,36 @@ def get_ticker_24h(symbol="BTCUSDT"):
 
 def get_klines(symbol="BTCUSDT", interval="1h", limit=200):
     """
-    Fetches OHLCV candlestick data with safe interval mapping.
-    Maps unsupported Futures intervals (like 3d) to valid 1d interval automatically.
+    Fetches OHLCV candlestick data.
+    Auto-resamples 2d and 3d timeframes from 1D candles!
     """
     symbol = symbol.upper().replace("/", "").replace("-", "")
     if not symbol.endswith("USDT") and not symbol.endswith("BTC"):
         symbol += "USDT"
 
-    # Map intervals safely for Binance API compatibility
-    # Note: 3d is mapped to 1d for Binance Futures API compatibility
-    interval_map = {
-        "15m": "15m", "30m": "30m", "1h": "1h", "2h": "2h",
-        "4h": "4h", "6h": "6h", "8h": "8h", "12h": "12h", 
-        "1d": "1d", "3d": "1d", "1w": "1w"
-    }
-    safe_interval = interval_map.get(interval.lower(), "1h")
+    clean_tf = interval.lower().strip()
+
+    # Special Resampling handling for 2D and 3D timeframes
+    if clean_tf in ["2d", "3d"]:
+        days = 2 if clean_tf == "2d" else 3
+        print(f"🔄 Resampling {days}D candles for {symbol} from 300 1D candles...")
+        candles_1d = get_klines(symbol, "1d", 300)
+        resampled = resample_candles(candles_1d, days=days)
+        if len(resampled) >= 10:
+            print(f"✅ Successfully resampled {len(resampled)} {days.upper()}D candles for {symbol}")
+            return resampled
+        safe_interval = "1d"
+    else:
+        interval_map = {
+            "15m": "15m", "30m": "30m", "1h": "1h", "2h": "2h",
+            "4h": "4h", "6h": "6h", "8h": "8h", "12h": "12h", 
+            "1d": "1d", "1w": "1w"
+        }
+        safe_interval = interval_map.get(clean_tf, "1d")
 
     path = f"klines?symbol={symbol}&interval={safe_interval}&limit={limit}"
     data = fetch_json_with_fallback(path)
     
-    # Absolute Fallback to 1d if primary interval returned empty
     if not data or not isinstance(data, list):
         print(f"⚠️ Primary interval {safe_interval} returned empty for {symbol}. Absolute fallback to 1d...")
         path_fallback = f"klines?symbol={symbol}&interval=1d&limit={limit}"
