@@ -1,20 +1,8 @@
 """
-100% Exact TradingView Pine Script v4 Supertrend Implementation (KivancOzbilgic)
-
-Pine Script v4 Logic:
-Periods = 10 / 15
-Multiplier = 3.0 / 10.0
-changeATR = true -> TradingView RMA (Wilder's Smoothing)
-
-atr = changeATR ? rma(tr, Periods) : sma(tr, Periods)
-up = src - (Multiplier * atr)
-up1 = nz(up[1], up)
-up := close[1] > up1 ? max(up, up1) : up
-dn = src + (Multiplier * atr)
-dn1 = nz(dn[1], dn)
-dn := close[1] < dn1 ? min(dn, dn1) : dn
-trend = 1
-trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
+100% Exact TradingView Pine Script v4 Supertrend Kivanc Engine
+Fast ST: ATR 10, Multiplier 3.0
+Slow ST: ATR 15, Multiplier 10.0
+Source: hl2, RMA Wilder's ATR Calculation
 """
 
 def format_price_level(val):
@@ -46,16 +34,14 @@ def calculate_supertrend(candles, period=10, multiplier=3.0, change_atr=True):
         tr_val = max(highs[i] - lows[i], abs(highs[i] - closes[i-1]), abs(lows[i] - closes[i-1]))
         tr.append(tr_val)
 
-    # 2. ATR Calculation (Pine Script atr(period) = RMA(tr, period) if change_atr else SMA(tr, period))
+    # 2. ATR Calculation (TradingView RMA Wilder's Smoothing)
     atr = [0.0] * n
     if change_atr:
-        # TradingView RMA (Wilder's Smoothing)
         if n >= period:
             atr[period - 1] = sum(tr[:period]) / float(period)
             for i in range(period, n):
                 atr[i] = (atr[i-1] * (period - 1) + tr[i]) / float(period)
     else:
-        # Simple Moving Average
         for i in range(period - 1, n):
             atr[i] = sum(tr[i - period + 1 : i + 1]) / float(period)
 
@@ -74,19 +60,16 @@ def calculate_supertrend(candles, period=10, multiplier=3.0, change_atr=True):
         prev_lower = lowerband[i-1]
         prev_upper = upperband[i-1]
 
-        # up := close[1] > up1 ? max(up, up1) : up
         if closes[i-1] > prev_lower:
             lowerband[i] = max(up[i], prev_lower)
         else:
             lowerband[i] = up[i]
 
-        # dn := close[1] < dn1 ? min(dn, dn1) : dn
         if closes[i-1] < prev_upper:
             upperband[i] = min(dn[i], prev_upper)
         else:
             upperband[i] = dn[i]
 
-        # trend := trend == -1 and close > dn1 ? 1 : trend == 1 and close < up1 ? -1 : trend
         prev_trend = trend[i-1]
         if prev_trend == -1 and closes[i] > prev_upper:
             trend[i] = 1
@@ -97,60 +80,15 @@ def calculate_supertrend(candles, period=10, multiplier=3.0, change_atr=True):
 
     return lowerband, upperband, trend
 
-def format_color_block(close, line_val, color_icon, is_support):
-    """
-    Formats a single color block with exact padding width:
-    col = f"{color_icon} {pos:<4} {price:<7} ({diff_str})"
-    """
-    if line_val is None or line_val <= 0:
-        return f"{color_icon} K.XĐ  ------- (---)"
-
-    price_str = format_price_level(line_val)
-
-    if is_support:
-        diff_pct = ((close - line_val) / close) * 100.0
-        abs_diff = abs(diff_pct)
-        if 0.0 <= abs_diff <= 0.5:
-            pos_str = "CHẠM"
-        elif diff_pct > 0.5:
-            pos_str = "TRÊN"
-        else:
-            pos_str = "DƯỚI"
-            
-        sign_str = "+" if diff_pct >= 0 else "-"
-        diff_val_str = f"{sign_str}{abs_diff:.1f}%"
-    else: # Resistance
-        diff_pct = ((line_val - close) / close) * 100.0
-        abs_diff = abs(diff_pct)
-        if 0.0 <= abs_diff <= 0.5:
-            pos_str = "CHẠM"
-        elif diff_pct > 0.5:
-            pos_str = "DƯỚI"
-        else:
-            pos_str = "TRÊN"
-            
-        sign_str = "-" if diff_pct >= 0 else "+"
-        diff_val_str = f"{sign_str}{abs_diff:.1f}%"
-
-    return f"{color_icon} {pos_str:<4} {price_str:<7} ({diff_val_str})"
-
 def analyze_4_trends(candles):
-    """
-    Returns 4 aligned color block strings:
-    col_blue, col_green, col_red, col_yellow
-    """
     if not candles or len(candles) < 15:
-        null_block_blue = format_color_block(0, 0, "🔵", True)
-        null_block_green = format_color_block(0, 0, "🟢", True)
-        null_block_red = format_color_block(0, 0, "🔴", False)
-        null_block_yellow = format_color_block(0, 0, "🟡", False)
-        return null_block_blue, null_block_green, null_block_red, null_block_yellow
+        return None, None, None, None
 
     current_close = candles[-1]["close"]
     
-    # 1. Supertrend Nhanh (Blue / Red): ATR 10, Multiplier 3
+    # 1. Supertrend Nhanh (Blue / Red): ATR 10, Multiplier 3.0
     low_fast, up_fast, trend_fast = calculate_supertrend(candles, period=10, multiplier=3.0, change_atr=True)
-    # 2. Supertrend Chậm (Green / Yellow): ATR 15, Multiplier 10
+    # 2. Supertrend Chậm (Green / Yellow): ATR 15, Multiplier 10.0
     low_slow, up_slow, trend_slow = calculate_supertrend(candles, period=15, multiplier=10.0, change_atr=True)
     
     val_blue = low_fast[-1] if low_fast else 0
@@ -158,12 +96,4 @@ def analyze_4_trends(candles):
     val_green = low_slow[-1] if low_slow else 0
     val_yellow = up_slow[-1] if up_slow else 0
 
-    col_blue = format_color_block(current_close, val_blue, "🔵", is_support=True)
-    col_green = format_color_block(current_close, val_green, "🟢", is_support=True)
-    col_red = format_color_block(current_close, val_red, "🔴", is_support=False)
-    col_yellow = format_color_block(current_close, val_yellow, "🟡", is_support=False)
-
-    return col_blue, col_green, col_red, col_yellow
-
-def analyze_timeframe(candles):
-    return analyze_4_trends(candles)
+    return val_blue, val_green, val_red, val_yellow

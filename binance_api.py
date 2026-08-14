@@ -1,7 +1,6 @@
 import urllib.request
 import json
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 BINANCE_ENDPOINTS = [
     "https://api.binance.com/api/v3",        # Binance Spot API (Primary)
@@ -23,7 +22,7 @@ def fetch_json_with_fallback(path):
         url = f"{base_url}/{path}"
         try:
             req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=4) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:
                 if response.status == 200:
                     data = json.loads(response.read().decode('utf-8'))
                     if data and isinstance(data, (list, dict)):
@@ -32,22 +31,6 @@ def fetch_json_with_fallback(path):
             continue
 
     return None
-
-def validate_binance_symbol(symbol):
-    """
-    Validates if symbol exists and is trading on Binance.
-    Returns (is_valid, full_symbol)
-    """
-    full_symbol = normalize_symbol(symbol)
-    path = f"ticker/24hr?symbol={full_symbol}"
-    data = fetch_json_with_fallback(path)
-    
-    if data and isinstance(data, (dict, list)):
-        ticker_data = data[0] if isinstance(data, list) else data
-        if ticker_data and "lastPrice" in ticker_data:
-            return True, full_symbol
-            
-    return False, full_symbol
 
 def get_ticker_24h(symbol="BTC"):
     full_symbol = normalize_symbol(symbol)
@@ -68,10 +51,9 @@ def get_ticker_24h(symbol="BTC"):
             
     return None
 
-def get_klines(symbol="BTC", interval="1h", limit=100):
+def get_klines(symbol="BTC", interval="4h", limit=500):
     """
-    Fetches 100% REAL OHLCV candlestick data from Binance REST API.
-    Zero mock/synthetic data. Returns empty list if Binance returns no data.
+    Fetches 500 REAL OHLCV candles from Binance to ensure 100% exact Wilder's RMA ATR accumulation.
     """
     full_symbol = normalize_symbol(symbol)
     clean_tf = interval.lower().strip()
@@ -81,7 +63,7 @@ def get_klines(symbol="BTC", interval="1h", limit=100):
         "4h": "4h", "6h": "6h", "8h": "8h", "12h": "12h", 
         "1d": "1d", "1w": "1w", "1m": "1M"
     }
-    safe_interval = interval_map.get(clean_tf, "1d")
+    safe_interval = interval_map.get(clean_tf, "4h")
 
     path = f"klines?symbol={full_symbol}&interval={safe_interval}&limit={limit}"
     data = fetch_json_with_fallback(path)
@@ -103,26 +85,3 @@ def get_klines(symbol="BTC", interval="1h", limit=100):
             return []
 
     return []
-
-def fetch_multi_klines_parallel(symbol="BTC", intervals=["30m", "1h", "2h", "4h", "8h", "12h", "1d", "1w", "1m"], limit=100):
-    """
-    Multi-threaded parallel fetch of 100% REAL Binance candles.
-    """
-    full_symbol = normalize_symbol(symbol)
-    results = {}
-    
-    with ThreadPoolExecutor(max_workers=len(intervals) + 1) as executor:
-        future_ticker = executor.submit(get_ticker_24h, full_symbol)
-        future_klines = {
-            tf: executor.submit(get_klines, full_symbol, tf, limit)
-            for tf in intervals
-        }
-        
-        ticker = future_ticker.result()
-        for tf, future in future_klines.items():
-            try:
-                results[tf] = future.result()
-            except Exception:
-                results[tf] = []
-            
-    return ticker, results

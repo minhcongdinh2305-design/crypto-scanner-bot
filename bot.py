@@ -1,14 +1,11 @@
 #!/usr/bin/env python3
 """
-Ultra-Lightweight TradingView Webhook -> Telegram Alert Bot
-Pure Python Implementation (Zero PIP dependencies required).
+Dedicated BTC 4H 24/7/365 Auto-Monitor & Alert Telegram Bot Engine
+Pure Python Implementation. Zero PIP dependencies required!
 Compatible with 24/7 Render / Railway / Replit Web Services.
 
-Features:
-1. Instant POST /webhook listener for TradingView Alert signals (< 0.05s latency).
-2. GET / endpoint returning 200 OK for Render Web Service Health Checks.
-3. Automatically captures & displays User Chat ID on /start or /chatid commands.
-4. Forwards rich TradingView alerts directly to Telegram.
+Destination Chat ID: -1002561812973
+Indicator: Double Supertrend Kivanc EXACT (Fast 10,3.0 & Slow 15,10.0)
 """
 import urllib.request
 import urllib.parse
@@ -17,12 +14,22 @@ import time
 import os
 import sys
 import threading
+import re
 import traceback
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from scanner import get_btc_4h_check_report, check_btc_4h_signal
+from ta_engine import format_price_level
 
 CONFIG_FILE = "config.json"
 WEBHOOK_PORT = int(os.environ.get("PORT", 10000))
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://crypto-scanner-bot-zs2j.onrender.com")
+
+# DEFAULT CHAT ID
+DEFAULT_GROUP_CHAT_ID = "-1002561812973"
+
+# ANTI-SPAM COOLDOWN STATE
+last_alert_type = None
+last_alert_time = 0
 
 def load_config():
     config_data = {}
@@ -40,6 +47,8 @@ def load_config():
     chat_id = os.environ.get("GROUP_CHAT_ID")
     if chat_id:
         config_data["group_chat_id"] = chat_id
+    elif "group_chat_id" not in config_data:
+        config_data["group_chat_id"] = DEFAULT_GROUP_CHAT_ID
         
     return config_data
 
@@ -54,7 +63,7 @@ def telegram_api(token, method, params=None):
         if params:
             data = urllib.parse.urlencode(params).encode('utf-8')
         req = urllib.request.Request(url, data=data)
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=15) as response:
             return json.loads(response.read().decode('utf-8'))
     except Exception as e:
         print(f"Telegram API Error ({method}): {e}")
@@ -74,91 +83,23 @@ def send_message(token, chat_id, text):
         })
     return res
 
+def scan_coin(symbol="BTC"):
+    return get_btc_4h_check_report()
+
 # GLOBAL STATE
 config = load_config()
 bot_token = config.get("telegram_token", "")
-default_chat_id = config.get("group_chat_id", "")
+default_chat_id = config.get("group_chat_id", DEFAULT_GROUP_CHAT_ID)
 
 class WebhookRequestHandler(BaseHTTPRequestHandler):
-    """
-    HTTP Server handling:
-    - GET / & GET /webhook -> 200 OK (Render Health Check)
-    - POST / & POST /webhook -> Receives TradingView Alert & forwards to Telegram (< 0.05s)
-    """
-    
+    """HTTP Request Handler to fulfill Render Web Service Health Checks."""
     def do_GET(self):
         self.send_response(200)
         self.send_header('Content-type', 'text/html; charset=utf-8')
         self.end_headers()
-        html_response = (
-            "<html><head><title>TradingView Webhook Bot</title></head>"
-            "<body>"
-            "<h1>🚀 TradingView Webhook Bot is Live 24/7!</h1>"
-            "<p>Send POST requests to <code>/webhook</code> to forward alerts to Telegram.</p>"
-            "</body></html>"
-        )
-        self.wfile.write(html_response.encode('utf-8'))
-
-    def do_POST(self):
-        global bot_token, default_chat_id
-        
-        content_length = int(self.headers.get('Content-Length', 0))
-        post_data = self.rfile.read(content_length).decode('utf-8', errors='ignore')
-        
-        print(f"\n🚨 [TRADINGVIEW WEBHOOK RECEIVED] -> {post_data}")
-
-        # Send HTTP 200 OK response to TradingView immediately (< 0.01s)
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        self.wfile.write(b'{"status": "success", "message": "Alert received"}')
-
-        # Format and forward alert payload to Telegram
-        if not bot_token or not default_chat_id:
-            print("⚠️ Missing bot_token or default_chat_id! Unable to forward alert to Telegram.")
-            return
-
-        alert_content = post_data.strip()
-        formatted_alert = ""
-
-        try:
-            payload = json.loads(post_data)
-            symbol = payload.get("ticker", payload.get("symbol", payload.get("coin", "CRYPTO"))).upper()
-            action = payload.get("action", payload.get("signal", "CẢNH BÁO"))
-            price = payload.get("price", payload.get("close", ""))
-            msg = payload.get("message", payload.get("note", ""))
-            
-            lines = [f"🚨 <b>CẢNH BÁO {symbol} (TỪ TRADINGVIEW)</b>\n"]
-            if action:
-                lines.append(f"▫️ <b>Tín hiệu:</b> {action}")
-            if price:
-                lines.append(f"▫️ <b>Mức giá:</b> {price} USDT")
-            if msg:
-                lines.append(f"▫️ <b>Chi tiết:</b> {msg}")
-
-            # Append any remaining extra JSON fields
-            extra_fields = []
-            for k, v in payload.items():
-                if k not in ["ticker", "symbol", "coin", "action", "signal", "price", "close", "message", "note"]:
-                    extra_fields.append(f"▫️ <b>{k}:</b> {v}")
-            if extra_fields:
-                lines.extend(extra_fields)
-
-            formatted_alert = "\n".join(lines)
-
-        except Exception:
-            # Plain text alert payload
-            formatted_alert = f"🚨 <b>CẢNH BÁO TỪ TRADINGVIEW</b>\n\n{alert_content}"
-
-        # Asynchronously send alert to Telegram
-        threading.Thread(
-            target=send_message,
-            args=(bot_token, default_chat_id, formatted_alert),
-            daemon=True
-        ).start()
+        self.wfile.write(b"<html><body><h1>Double Supertrend Kivanc BTC 4H 24/7/365 Bot is Active!</h1></body></html>")
 
     def log_message(self, format, *args):
-        # Mute standard HTTP logs to keep console clean
         return
 
 def start_webhook_server():
@@ -166,15 +107,62 @@ def start_webhook_server():
     try:
         server_address = ('0.0.0.0', WEBHOOK_PORT)
         httpd = HTTPServer(server_address, WebhookRequestHandler)
-        print(f"🌐 TRADINGVIEW WEBHOOK SERVER RUNNING ON PORT: {WEBHOOK_PORT}")
+        print(f"🌐 HTTP Web Service is running on port {WEBHOOK_PORT}")
         httpd.serve_forever()
     except Exception as e:
-        print(f"⚠️ Web Server Exception on port {WEBHOOK_PORT}: {e}")
+        print(f"⚠️ HTTP Server Exception on port {WEBHOOK_PORT}: {e}")
+
+def keep_alive_self_ping():
+    """Self-ping HTTP GET request to keep Render Web Service awake 24/7/365."""
+    try:
+        req = urllib.request.Request(RENDER_URL, headers={"User-Agent": "RenderKeepAlive/1.0"})
+        with urllib.request.urlopen(req, timeout=4) as resp:
+            pass
+    except Exception:
+        pass
+
+def btc_4h_auto_monitor_loop():
+    """
+    24/7/365 SILENT BACKGROUND AUTO-MONITOR & KEEP-ALIVE FOR BTC 4H.
+    Scans every 1 minute (60s).
+    100% SILENT when price is in normal range.
+    Destination Chat ID: -1002561812973
+    """
+    global last_alert_type, last_alert_time, bot_token, default_chat_id
+    
+    print(f"🤖 24/7/365 AUTO-MONITOR INITIALIZED -> DESTINATION CHAT ID: {default_chat_id}")
+    
+    while True:
+        try:
+            time.sleep(60) # Scan every 1 minute
+            
+            # Keep-Alive Self Ping
+            threading.Thread(target=keep_alive_self_ping, daemon=True).start()
+
+            triggered, signal_type, alert_msg, curr_price, val_blue, val_red = check_btc_4h_signal()
+            
+            p_curr = format_price_level(curr_price)
+            p_blue = format_price_level(val_blue)
+            p_red = format_price_level(val_red)
+            status_text = signal_type if triggered else "OK (Floating)"
+            print(f"[4H Scan] BTC: {p_curr} | Blue: {p_blue} | Red: {p_red} | Status: {status_text}")
+
+            if triggered and alert_msg and bot_token and default_chat_id:
+                now = time.time()
+                # 60-Minute Cooldown (3600s) or new signal type
+                if signal_type != last_alert_type or (now - last_alert_time > 3600):
+                    print(f"🚨 ALERT TRIGGERED: {signal_type} -> Sending alert to Chat ID {default_chat_id}")
+                    send_message(bot_token, default_chat_id, alert_msg)
+                    last_alert_type = signal_type
+                    last_alert_time = now
+        except Exception as e:
+            print(f"⚠️ Error in BTC 4H Auto-Monitor Loop: {e}")
+            time.sleep(10)
 
 def handle_update(token, update, bot_username=""):
     """
-    Process incoming Telegram update.
-    Returns Chat ID and Webhook URL on /start or /chatid command.
+    Process incoming Telegram message.
+    Automatically captures chat_id on /start or incoming messages.
     """
     global default_chat_id, config
     
@@ -184,7 +172,7 @@ def handle_update(token, update, bot_username=""):
         
     chat_id = message["chat"]["id"]
     
-    # Save chat_id dynamically
+    # Save chat_id dynamically if message comes from group/user
     if str(chat_id) != str(default_chat_id):
         default_chat_id = chat_id
         config["group_chat_id"] = chat_id
@@ -203,34 +191,26 @@ def handle_update(token, update, bot_username=""):
 
     try:
         clean_text = text.split("@")[0].strip()
-        cmd = clean_text.split()[0].lower()
+        parts = clean_text.split()
+        cmd = parts[0].lower()
         if cmd.startswith("/"):
             cmd = cmd[1:]
         
-        if cmd in ["start", "help", "chatid", "id"]:
-            webhook_url = f"{RENDER_URL}/webhook"
+        if cmd in ["start", "help"]:
             welcome = (
-                "🤖 <b>TRỢ LÝ NHẬN CẢNH BÁO TRADINGVIEW WEBHOOK</b>\n\n"
-                f"🆔 <b>Chat ID của bạn:</b> <code>{chat_id}</code>\n"
-                f"🌐 <b>Webhook URL TradingView:</b>\n<code>{webhook_url}</code>\n\n"
-                "📌 <b>HƯỚNG DẪN CẤU HÌNH TRÊN TRADINGVIEW:</b>\n"
-                "1. Tạo Alert trên TradingView Chart.\n"
-                "2. Ở mục <b>Notifications</b> ➔ Tích chọn <b>Webhook URL</b>.\n"
-                f"3. Dán URL: <code>{webhook_url}</code>\n"
-                "4. Ở mục <b>Message</b>: Nhập nội dung tin nhắn cảnh báo dạng Text hoặc JSON tùy ý!\n\n"
-                "✅ <i>Bot sẽ nhận và bắn tin nhắn cảnh báo về Telegram tức thì (< 0.1 giây)!</i>"
+                "🤖 <b>TRỢ LÝ CẢNH BÁO TỰ ĐỘNG BTC 4H (24/7/365)</b>\n\n"
+                "📌 <b>THÔNG SỐ CHỈ BÁO KIVANC SUPERTREND:</b>\n"
+                "• Dải Nhanh (🔵/🔴): ATR 10, Multiplier 3.0\n"
+                "• Dải Chậm (🟢/🟡): ATR 15, Multiplier 10.0\n\n"
+                "📌 <b>CÂU LỆNH KIỂM TRA:</b>\n"
+                "• <code>/check</code> hoặc <code>/test</code> : Kiểm tra và đối chiếu các mốc giá trực tiếp với TradingView."
             )
             send_message(token, chat_id, welcome)
             return
 
-        if cmd in ["test", "check"]:
-            test_msg = (
-                "🧪 <b>BẢN TIN KIỂM TRA WEBHOOK TRADINGVIEW</b>\n\n"
-                f"▫️ <b>Chat ID:</b> <code>{chat_id}</code>\n"
-                f"▫️ <b>Trạng thái Webhook:</b> 🟢 Sẵn sàng nhận tín hiệu từ TradingView!\n"
-                f"▫️ <b>URL:</b> <code>{webhook_url}</code>"
-            )
-            send_message(token, chat_id, test_msg)
+        if cmd in ["check", "test", "btc", "scan"]:
+            report = get_btc_4h_check_report()
+            send_message(token, chat_id, report)
             return
 
     except Exception as e:
@@ -254,16 +234,20 @@ def run_bot():
     bot_info = me["result"]
     bot_username = bot_info.get('username', '')
 
-    # 1. START HTTP WEB SERVICE SERVER FOR TRADINGVIEW WEBHOOK & RENDER BINDING
+    # 1. START HTTP WEB SERVICE SERVER FOR RENDER PORT BINDING
     server_thread = threading.Thread(target=start_webhook_server, daemon=True)
     server_thread.start()
 
+    # 2. START SILENT 24/7/365 BTC 4H AUTO-MONITOR BACKGROUND THREAD
+    monitor_thread = threading.Thread(target=btc_4h_auto_monitor_loop, daemon=True)
+    monitor_thread.start()
+
     print("\n" + "="*60)
-    print(f"🚀 TRADINGVIEW WEBHOOK TELEGRAM BOT ACTIVE 24/7!")
+    print(f"🚀 DOUBLE SUPERTREND KIVANC BTC 4H AUTO-MONITOR BOT ACTIVE!")
     print(f"• Bot Username: @{bot_username}")
+    print(f"• Destination Chat ID: {default_chat_id}")
     print(f"• HTTP Port: {WEBHOOK_PORT}")
-    print(f"• Webhook Endpoint: POST /webhook")
-    print(f"• Health Check: GET / (Status 200 OK)")
+    print(f"• Test Command: /check or /test")
     print("="*60 + "\n")
 
     offset = 0
